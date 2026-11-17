@@ -15,8 +15,6 @@
     <string name="episode_baru">Episode Baru</string>
     <string name="terlaris">Terlaris</string>
     <string name="lainnya">Lainnya</string>
-    <string name="info">Info</string>
-    <string name="info_mimin">Info Mimin</string>
     <string name="ok">OK</string>
 
     <!-- Jelajahi -->
@@ -56,15 +54,9 @@
     <string name="layar_penuh">Layar\nPenuh</string>
     <string name="volume">Volume</string>
     <string name="film">Film</string>
-    <string name="kualitas_hd">HD</string>
-    <string name="kualitas_sd">SD</string>
     <string name="gagal_memutar">Gagal memutar Episode %1$d</string>
-    <string name="subtitle_indonesia_belum_tersedia">Subtitle Indonesia belum tersedia — menampilkan Inggris</string>
-    <!-- Tombol subtitle manual di kontrol player (siklus Indonesia → English → Mati) -->
-    <string name="subtitle">Subtitle</string>
-    <string name="subtitle_pilihan_indonesia">Subtitle: Indonesia</string>
-    <string name="subtitle_pilihan_inggris">Subtitle: English</string>
-    <string name="subtitle_pilihan_mati">Subtitle: Mati</string>
+    <string name="memuat_video">Memuat video…</string>
+    <string name="terlalu_banyak_permintaan">Terlalu banyak permintaan, coba lagi sebentar lagi</string>
 
     <!-- Dialog pilih mode (tap episode) -->
     <string name="pilih_mode">Silakan pilih salah satu mode</string>

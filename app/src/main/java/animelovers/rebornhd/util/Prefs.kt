@@ -32,7 +32,15 @@ class Prefs(context: Context) {
         get() = prefs.getString("allnotif", "0") ?: "0"
         set(value) = prefs.edit().putString("allnotif", value).apply()
 
-    /** "1" = kualitas terakhir HD, "0" = SD (default SD, seperti aslinya). */
+    /**
+     * "1" = utamakan 720p, "0" = utamakan 480p (default SD sejak v2 —
+     * instalasi baru membuka embed 480p dulu, persis seperti aslinya;
+     * keputusan Faygo 2026-11-17 ~18:59 WIB: "buka sd dulu aja gpp,
+     * aku inget animlovers juga sd dulu baru hd").
+     * v2: 720p = sumber direct (Pixeldrain/token/Blogger itag 22);
+     * 480p = embed WebView. Pref ini memilih kandidat AWAL saat episode
+     * dibuka; tombol `resolution` di player bisa mengalihkannya.
+     */
     var hdOnly: String
         get() = prefs.getString("hd_only", "0") ?: "0"
         set(value) = prefs.edit().putString("hd_only", value).apply()

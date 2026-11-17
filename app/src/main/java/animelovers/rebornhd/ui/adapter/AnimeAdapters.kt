@@ -5,18 +5,22 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import animelovers.rebornhd.R
-import animelovers.rebornhd.data.model.Anime
+import animelovers.rebornhd.data.model.SankaAnime
+import animelovers.rebornhd.data.model.SankaEpisodeItem
 import animelovers.rebornhd.databinding.ItemBrowseGridBinding
 import animelovers.rebornhd.databinding.ItemBrowseListBinding
-import animelovers.rebornhd.databinding.ItemInfoBinding
 import animelovers.rebornhd.databinding.ItemMostviewBinding
 import animelovers.rebornhd.databinding.ItemSlideBinding
 import animelovers.rebornhd.databinding.ItemUpdateBinding
 import coil.load
+import java.text.NumberFormat
+import java.util.Locale
 
 /**
  * Adapter kartu poster (Beranda + Jelajahi grid + Lainnya + Favorit).
  * Satu adapter, tiga layout item — polanya sama (poster 100×150dp + judul).
+ * v2: model Sanka (SankaAnime / SankaEpisodeItem). Adapter Info DIHAPUS —
+ * seksi Info dihapus dari Beranda (desain.md §14).
  */
 
 private fun loadPoster(view: android.widget.ImageView, url: String) {
@@ -27,14 +31,18 @@ private fun loadPoster(view: android.widget.ImageView, url: String) {
     }
 }
 
-/** Item "Episode Baru" (item_update): poster + judul + status + badge episode. */
+/** Format jumlah tonton ala Indonesia: 103410 → "103.410". */
+private fun formatViews(views: Int): String =
+    NumberFormat.getNumberInstance(Locale("id", "ID")).format(views)
+
+/** Item "Episode Baru" (item_update): poster + judul episode + status + badge episode. */
 class UpdateAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaEpisodeItem) -> Unit
 ) : RecyclerView.Adapter<UpdateAdapter.Holder>() {
 
-    private var items: List<Anime> = emptyList()
+    private var items: List<SankaEpisodeItem> = emptyList()
 
-    fun submitList(list: List<Anime>) {
+    fun submitList(list: List<SankaEpisodeItem>) {
         items = list
         notifyDataSetChanged()
     }
@@ -56,32 +64,35 @@ class UpdateAdapter(
     }
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
-        val anime = items[position]
+        val item = items[position]
         val b = holder.binding
-        loadPoster(b.posterView, anime.poster)
-        b.titleView.text = anime.displayTitle
-        b.statusTextUpdate.text = anime.status
+        loadPoster(b.posterView, item.posterUrl)
+        b.titleView.text = item.title ?: item.animeTitle ?: ""
+        b.statusTextUpdate.text = item.animeStatus ?: ""
         b.statusTextUpdate.visibility =
-            if (anime.status.isBlank()) View.GONE else View.VISIBLE
-        val epCount = anime.episodeCount
-        b.episodeUpdate.text = if (epCount != null) "Ep $epCount" else ""
+            if (item.animeStatus.isNullOrBlank()) View.GONE else View.VISIBLE
+        val ep = item.episodeNumber
+        b.episodeUpdate.text = if (ep > 0) "Ep $ep" else ""
         b.episodeUpdate.visibility =
-            if (epCount != null) View.VISIBLE else View.GONE
+            if (ep > 0) View.VISIBLE else View.GONE
     }
 
     override fun getItemCount(): Int = items.size
 }
 
-/** Item "Terlaris" (item_mostview): poster + judul + badge skor + status.
- *  Anikoto tidak memberi jumlah tonton — badge menampilkan skor sebagai
- *  proksi "paling banyak ditonton" (diurutkan skor tertinggi dulu). */
+/**
+ * Item "Terlaris" (item_mostview): poster + judul + badge jumlah tonton + status.
+ * Badge HANYA bila Sanka menyediakan jumlah tonton (views > 0) — bila 0,
+ * badge disembunyikan (JANGAN angka palsu; desain.md §14.4).
+ * Urutan: Sanka `popularWeekly` (sudah terurut oleh server).
+ */
 class MostViewAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaAnime) -> Unit
 ) : RecyclerView.Adapter<MostViewAdapter.Holder>() {
 
-    private var items: List<Anime> = emptyList()
+    private var items: List<SankaAnime> = emptyList()
 
-    fun submitList(list: List<Anime>) {
+    fun submitList(list: List<SankaAnime>) {
         items = list
         notifyDataSetChanged()
     }
@@ -105,14 +116,15 @@ class MostViewAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
-        loadPoster(b.posterViewMostview, anime.poster)
+        loadPoster(b.posterViewMostview, anime.posterUrl)
         b.titleViewMostview.text = anime.displayTitle
-        b.textView4maxview.text = if (anime.score.isBlank()) "" else "★ ${anime.score}"
+        b.textView4maxview.text =
+            if (anime.views > 0) "👁 ${formatViews(anime.views)}" else ""
         b.textView4maxview.visibility =
-            if (anime.score.isBlank()) View.GONE else View.VISIBLE
-        b.statusTextmost.text = anime.status
+            if (anime.views > 0) View.VISIBLE else View.GONE
+        b.statusTextmost.text = anime.status ?: ""
         b.statusTextmost.visibility =
-            if (anime.status.isBlank()) View.GONE else View.VISIBLE
+            if (anime.status.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
     override fun getItemCount(): Int = items.size
@@ -120,12 +132,12 @@ class MostViewAdapter(
 
 /** Item grid Jelajahi / Lainnya / Favorit (item_browse_grid). */
 class BrowseGridAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaAnime) -> Unit
 ) : RecyclerView.Adapter<BrowseGridAdapter.Holder>() {
 
-    private var items: List<Anime> = emptyList()
+    private var items: List<SankaAnime> = emptyList()
 
-    fun submitList(list: List<Anime>) {
+    fun submitList(list: List<SankaAnime>) {
         items = list
         notifyDataSetChanged()
     }
@@ -149,21 +161,25 @@ class BrowseGridAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
-        loadPoster(b.posterViewBrows, anime.poster)
+        loadPoster(b.posterViewBrows, anime.posterUrl)
         b.titleViewBrows.text = anime.displayTitle
     }
 
     override fun getItemCount(): Int = items.size
 }
 
-/** Item list Jelajahi (item_browse_list): poster + judul + status + episode + genre. */
+/**
+ * Item list Jelajahi (item_browse_list): poster + judul + status + genre.
+ * Sanka tidak memberi jumlah episode di ringkasan — baris maxepisode
+ * disembunyikan (bukan diisi angka palsu).
+ */
 class BrowseListAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaAnime) -> Unit
 ) : RecyclerView.Adapter<BrowseListAdapter.Holder>() {
 
-    private var items: List<Anime> = emptyList()
+    private var items: List<SankaAnime> = emptyList()
 
-    fun submitList(list: List<Anime>) {
+    fun submitList(list: List<SankaAnime>) {
         items = list
         notifyDataSetChanged()
     }
@@ -187,12 +203,11 @@ class BrowseListAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
-        loadPoster(b.posterViewBrows, anime.poster)
+        loadPoster(b.posterViewBrows, anime.posterUrl)
         b.titleViewBrows.text = anime.displayTitle
-        b.statusText.text = anime.status
-        val epCount = anime.episodeCount
-        b.maxepisode.text = if (epCount != null) "Episode: $epCount" else ""
-        b.genreTextAll.text = anime.genres.joinToString(", ")
+        b.statusText.text = anime.status ?: ""
+        b.maxepisode.visibility = View.GONE
+        b.genreTextAll.text = anime.genreNames
     }
 
     override fun getItemCount(): Int = items.size
@@ -200,12 +215,12 @@ class BrowseListAdapter(
 
 /** Item slider Beranda (item_slide): gambar penuh + judul. */
 class SlideAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaAnime) -> Unit
 ) : RecyclerView.Adapter<SlideAdapter.Holder>() {
 
-    private var items: List<Anime> = emptyList()
+    private var items: List<SankaAnime> = emptyList()
 
-    fun submitList(list: List<Anime>) {
+    fun submitList(list: List<SankaAnime>) {
         items = list
         notifyDataSetChanged()
     }
@@ -228,43 +243,12 @@ class SlideAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
-        holder.binding.slideImage.load(anime.poster) {
+        holder.binding.slideImage.load(anime.posterUrl) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
             crossfade(true)
         }
         holder.binding.slideNameTXT.text = anime.displayTitle
-    }
-
-    override fun getItemCount(): Int = items.size
-}
-
-/** Item pengumuman "Info" (item_info). v1: daftar kosong (tidak ada pengumuman
- *  dari backend) — adapter tetap disediakan untuk Backend nanti. */
-class InfoAdapter : RecyclerView.Adapter<InfoAdapter.Holder>() {
-
-    data class InfoItem(val date: String, val title: String)
-
-    private var items: List<InfoItem> = emptyList()
-
-    fun submitList(list: List<InfoItem>) {
-        items = list
-        notifyDataSetChanged()
-    }
-
-    inner class Holder(val binding: ItemInfoBinding) : RecyclerView.ViewHolder(binding.root)
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-        val binding = ItemInfoBinding.inflate(
-            LayoutInflater.from(parent.context), parent, false
-        )
-        return Holder(binding)
-    }
-
-    override fun onBindViewHolder(holder: Holder, position: Int) {
-        val item = items[position]
-        holder.binding.tglInfo.text = item.date
-        holder.binding.infoTitle.text = item.title
     }
 
     override fun getItemCount(): Int = items.size

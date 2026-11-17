@@ -9,11 +9,16 @@ import animelovers.rebornhd.data.local.entity.VideoEntity
 
 /**
  * Room di atas SQLite. Nama file DB dipertahankan dari aslinya: "record.db".
- * Skema: PRD §5 (video + favorite). Versi 1.
+ * Skema: PRD §5 (video + favorite).
+ *
+ * Versi 2 (migrasi DESTRUKTIF — D4, disetujui Faygo 2026-11-17):
+ * kunci `idtitle` kini SLUG Sanka (dulu id angka Anikoto); riwayat dan
+ * favorit v1 DIHAPUS BERSIH karena kuncinya tidak berlaku lagi.
+ * Skema tabel tidak berubah (kolom sama) — yang berubah hanya isi kunci.
  */
 @Database(
     entities = [VideoEntity::class, FavoriteEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,7 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "record.db"
-                ).build().also { instance = it }
+                ).fallbackToDestructiveMigration().build().also { instance = it }
             }
         }
     }

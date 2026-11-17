@@ -134,7 +134,6 @@
 
                                 <TextView
                                     android:textColor="?attr/textColor"
-                                    android:autoLink="web"
                                     android:id="@+id/descDetailView"
                                     android:background="?attr/bgColor"
                                     android:padding="7dp"

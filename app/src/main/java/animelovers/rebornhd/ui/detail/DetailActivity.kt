@@ -12,7 +12,8 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
-import animelovers.rebornhd.data.model.SeriesData
+import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.model.SankaDetail
 import animelovers.rebornhd.databinding.ActivityDetailBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
@@ -23,6 +24,7 @@ import animelovers.rebornhd.ui.settings.SettingActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.toast
 import coil.load
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -30,6 +32,10 @@ import kotlinx.coroutines.launch
  * Poster 350dp FIT_CENTER + placeholder splashh, overlay hitam di bawah,
  * kartu deskripsi, baris "Lanjutkan" (bila ada riwayat), grid episode
  * 4 kolom portrait / 8 landscape, cap 40 episode + "Lainnya" bila lebih.
+ *
+ * v2 (Sanka): detail dari GET /anime/animekompi/detail/{slug}; daftar
+ * episode dari detail.episodes (slug episode ASLI dari server — jangan
+ * dirangkai sendiri, lihat SankaEpisode.kt).
  *
  * Gerbang Ecchi (§5.1): overlay kunci tampil bila genre mengandung "Ecchi"
  * DAN (belum login ATAU toggle Ecchi mati). Ketuk overlay → Pengaturan.
@@ -42,17 +48,17 @@ class DetailActivity : BaseActivity() {
     private lateinit var episodeAdapter: EpisodeAdapter
     private lateinit var historyAdapter: HistoryDetailAdapter
 
-    private var animeId: String = ""
+    private var animeSlug: String = ""
     private var animeTitle: String = ""
     private var animePoster: String = ""
-    private var series: SeriesData? = null
+    private var detail: SankaDetail? = null
     private var isFavorite: Boolean = false
     private var genres: List<String> = emptyList()
 
     companion object {
-        fun start(context: Context, animeId: String, title: String, poster: String) {
+        fun start(context: Context, animeSlug: String, title: String, poster: String) {
             val intent = Intent(context, DetailActivity::class.java).apply {
-                putExtra(Constants.EXTRA_ID_TITLE, animeId)
+                putExtra(Constants.EXTRA_ID_TITLE, animeSlug)
                 putExtra(Constants.EXTRA_TITLE, title)
                 putExtra(Constants.EXTRA_POSTER, poster)
             }
@@ -65,11 +71,11 @@ class DetailActivity : BaseActivity() {
         binding = ActivityDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        animeId = intent.getStringExtra(Constants.EXTRA_ID_TITLE).orEmpty()
+        animeSlug = intent.getStringExtra(Constants.EXTRA_ID_TITLE).orEmpty()
         animeTitle = intent.getStringExtra(Constants.EXTRA_TITLE).orEmpty()
         animePoster = intent.getStringExtra(Constants.EXTRA_POSTER).orEmpty()
 
-        // Placeholder langsung dari extras selagi /series dimuat.
+        // Placeholder langsung dari extras selagi /detail dimuat.
         binding.textViewTitled.text = animeTitle
         binding.posterDetailView.load(animePoster) {
             placeholder(R.drawable.splashh)
@@ -104,7 +110,7 @@ class DetailActivity : BaseActivity() {
         binding.fab.setOnClickListener { finish() }
         binding.favButton.setOnClickListener { toggleFavorite() }
         binding.lainnyaepisodeTxt.setOnClickListener {
-            EpisodeActivity.start(this, animeId, animeTitle, animePoster)
+            EpisodeActivity.start(this, animeSlug, animeTitle, animePoster)
         }
         binding.swipeContainerDet.setOnRefreshListener { load() }
 
@@ -134,13 +140,13 @@ class DetailActivity : BaseActivity() {
     private fun load() {
         lifecycleScope.launch {
             try {
-                val data = app().animeRepository.series(animeId)
-                if (data != null) {
-                    series = data
-                    applyData(data)
-                } else {
-                    toast(getString(R.string.gagal_memuat))
-                }
+                val data = app().sankaRepository.detail(animeSlug)
+                detail = data
+                applyData(data)
+            } catch (e: RateLimitException) {
+                toast(getString(R.string.terlalu_banyak_permintaan))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 toast(getString(R.string.gagal_memuat))
             } finally {
@@ -152,11 +158,10 @@ class DetailActivity : BaseActivity() {
         refreshHistory()
     }
 
-    private fun applyData(data: SeriesData) {
-        val anime = data.anime ?: return
-        animeTitle = anime.displayTitle
-        animePoster = anime.poster
-        genres = anime.genres
+    private fun applyData(data: SankaDetail) {
+        animeTitle = data.displayTitle
+        animePoster = data.posterUrl
+        genres = data.genreSlugs
 
         binding.posterDetailView.load(animePoster) {
             placeholder(R.drawable.splashh)
@@ -167,16 +172,23 @@ class DetailActivity : BaseActivity() {
             error(R.drawable.splashh)
         }
         binding.textViewTitled.text = animeTitle
-        binding.textViewStatus.text =
-            getString(R.string.status_format, anime.status, anime.rating)
+        // Baris status disembunyikan bila status + rating sama-sama kosong
+        // — kalau tidak, tampil label kosong "Status :   Rating : ".
+        val hasStatus = !data.status.isNullOrBlank() || data.ratingText.isNotBlank()
+        binding.textViewStatus.visibility = if (hasStatus) View.VISIBLE else View.GONE
+        if (hasStatus) {
+            binding.textViewStatus.text =
+                getString(R.string.status_format, data.status ?: "", data.ratingText)
+        }
         binding.textViewGenre.text =
-            getString(R.string.genre_format, anime.genres.joinToString(", "))
+            getString(R.string.genre_format, data.genreNames)
         binding.descDetailView.text = HtmlCompat.fromHtml(
-            anime.description, HtmlCompat.FROM_HTML_MODE_LEGACY
+            data.synopsis ?: "", HtmlCompat.FROM_HTML_MODE_LEGACY
         )
 
-        val episodes = data.episodes
+        val episodes = data.episodes.orEmpty()
             .map { it.number }
+            .filter { it > 0 }
             .distinct()
             .sorted()
         val shown = episodes.take(Constants.DETAIL_EPISODE_CAP)
@@ -191,7 +203,7 @@ class DetailActivity : BaseActivity() {
     private fun applyLock(showToast: Boolean = false) {
         val locked = isLocked()
         binding.lock.visibility = if (locked) View.VISIBLE else View.GONE
-        if (locked && showToast && series != null) {
+        if (locked && showToast && detail != null) {
             if (!app().authRepository.isSignedIn()) {
                 toast(getString(R.string.ecchi_perlu_login))
             } else {
@@ -214,12 +226,20 @@ class DetailActivity : BaseActivity() {
             toast(getString(R.string.ecchi_perlu_login))
             return
         }
-        VideoPlayActivity.start(this, animeId, animeTitle, animePoster, episode)
+        // Slug episode ASLI dari respons detail — jangan dirangkai sendiri.
+        val episodeSlug = detail?.episodes.orEmpty()
+            .firstOrNull { it.number == episode }?.slug
+            ?.takeIf { it.isNotBlank() }
+        if (episodeSlug == null) {
+            toast(getString(R.string.gagal_memutar, episode))
+            return
+        }
+        VideoPlayActivity.start(this, animeSlug, animeTitle, animePoster, episode, episodeSlug)
     }
 
     private fun refreshFavorite() {
         lifecycleScope.launch {
-            isFavorite = app().animeRepository.isFavorite(animeId)
+            isFavorite = app().sankaRepository.isFavorite(animeSlug)
             updateFavoriteIcon()
         }
     }
@@ -234,9 +254,9 @@ class DetailActivity : BaseActivity() {
     }
 
     private fun toggleFavorite() {
-        val anime = series?.anime ?: return
+        val anime = detail?.toAnime() ?: return
         lifecycleScope.launch {
-            isFavorite = app().animeRepository.toggleFavorite(anime)
+            isFavorite = app().sankaRepository.toggleFavorite(anime)
             updateFavoriteIcon()
             toast(
                 if (isFavorite) getString(R.string.favorit_ditambahkan)
@@ -247,7 +267,7 @@ class DetailActivity : BaseActivity() {
 
     private fun refreshHistory() {
         lifecycleScope.launch {
-            val item = app().animeRepository.getHistoryForTitle(animeId)
+            val item = app().sankaRepository.getHistoryForTitle(animeSlug)
             historyAdapter.submitList(if (item != null) listOf(item) else emptyList())
         }
     }

@@ -6,12 +6,16 @@ Indonesia yang dulu populer dan sudah mati total: server aslinya
 (`apps.i59400f.xyz`) kedaluwarsa dan proyek Firebase-nya terhapus, sehingga
 aplikasi aslinya mentok di Splash dan tidak bisa jalan lagi. Proyek ini
 membangunnya kembali dari hasil bedah APK aslinya — dengan rasa, tampilan,
-dan kontrol yang sama, tapi di atas sumber data modern yang masih hidup
-(Anikoto + VidCloud/MegaPlay). **Ini bukan aplikasi resmi dan tidak
-berafiliasi dengan pengembang asli (Reals Apps).**
+dan kontrol yang sama, tapi di atas sumber data lokal yang masih hidup
+(Sanka Vollerei / Animekompi, hardsub Indonesia). **Ini bukan aplikasi
+resmi dan tidak berafiliasi dengan pengembang asli (Reals Apps).**
 
-Katalog dari Anikoto, video + subtitle Inggris dari VidCloud, subtitle
-Indonesia dari backend kecil sendiri (lihat `docs/kontrak-api.md`).
+Katalog, detail, episode, dan sumber video dari Sanka Vollerei
+(`sankavollerei.web.id`, scraper Animekompi) — subtitle Indonesia
+**menempel di video (hardsub)**, jadi tidak ada sistem subtitle, tidak ada
+translate, dan **tidak ada backend lokal**: aplikasi bicara langsung ke
+Sanka + Pixeldrain, tanpa server yang harus dijalankan di Termux
+(lihat `docs/kontrak-api.md`).
 
 - **Paket:** `animelovers.rebornhd`
 - **Nama aplikasi:** AnimLovers (tanpa angka versi di mana pun)
@@ -21,15 +25,19 @@ Indonesia dari backend kecil sendiri (lihat `docs/kontrak-api.md`).
 
 ## Fitur
 
-- Beranda: slider, Episode Baru, Terlaris, Info
-- Jelajahi: katalog 9.404 judul, filter genre + pencarian, tampilan grid/list
+- Beranda: slider, Episode Baru, Terlaris (dari Sanka; seksi Info dihapus
+  di v2 — tidak ada backend pengumuman)
+- Jelajahi: pencarian server-side + filter genre Sanka, tampilan grid/list
 - Riwayat: lanjutkan tontonan (posisi tersimpan −30 detik), Favorit
-- Detail: poster, deskripsi, grid episode (maks. 40 + "Lainnya")
-- Player sendiri (Media3 + HLS): subtitle Indonesia/Inggris, SD/HD, FIT/FILL,
-  rotate, volume, putar otomatis episode berikutnya, unduh (DownloadManager)
+  (kunci kini slug Sanka, bukan id numerik)
+- Detail: poster, deskripsi, grid episode + "Lainnya"
+- Player sendiri (Media3, MP4 progresif): kualitas 720p/480p (jujur —
+  1080p tidak ada di sumber ini), FIT/FILL, rotate, volume, putar
+  otomatis episode berikutnya, unduh video .mp4 betulan (DownloadManager)
 - Gerbang Ecchi: genre Ecchi, Erotica, dan Hentai terkunci sampai login
   (Facebook/Google) dan toggle "Aktifkan Ecchi" di Pengaturan dinyalakan
-- Tanpa iklan, tanpa tombol Request, tanpa chat, tanpa FCM
+- Tanpa iklan, tanpa tombol Request, tanpa chat, tanpa FCM, tanpa subtitle
+  (hardsub menempel di video)
 
 ## Build
 
@@ -73,14 +81,13 @@ sudah mati). Sampai proyek itu dibuat, tombol Masuk menampilkan pesan
 "masuk belum tersedia" dan gerbang Ecchi tetap terkunci dengan aman.
 Langkah lengkapnya: `docs/firebase-setup.md`.
 
-## Backend Sub Indo
+## Tanpa backend (v2)
 
-Backend kecil (Node) menyediakan `GET /resolve`, `GET /subtitle/id`,
-`GET /proxy/hls`, `GET /health` — jalan di HP yang sama via Termux di
-`http://localhost:3100` (diisi di `util/Constants.kt` sebagai
-`BACKEND_BASE_URL`). Bila server tidak jalan, aplikasi memakai jalur
-langsung (VidCloud) dan subtitle Inggris sebagai fallback. Kontrak lengkap:
-`docs/kontrak-api.md`.
+v1 punya backend kecil (Node) untuk Sub Indo AI — v2
+**tidak lagi membutuhkannya**: subtitle sudah menempel di video (hardsub),
+dan aplikasi bicara langsung ke Sanka + Pixeldrain. Tidak ada yang perlu
+dijalankan di Termux untuk menonton. Kode backend v1 diarsip di luar repo
+(lihat PRD v2 §2.3) dan tidak ada di sini.
 
 ## Struktur
 
@@ -88,11 +95,11 @@ langsung (VidCloud) dan subtitle Inggris sebagai fallback. Kontrak lengkap:
 app/src/main/java/animelovers/rebornhd/
 ├── AnimeloversApp.kt          # Application + dependensi
 ├── data/
-│   ├── api/                   # AnikotoApi, VidCloudApi, SubtitleApi
+│   ├── api/                   # SankaApi (satu-satunya API)
 │   ├── auth/                  # AuthRepository + StubAuthRepository
-│   ├── local/                 # Room: video + favorite (record.db)
-│   ├── model/                 # Anime, Episode, VideoSource
-│   └── repo/                  # AnimeRepository, PlayerRepository
+│   ├── local/                 # Room: video + favorite (record.db, kunci slug)
+│   ├── model/                 # SankaAnime, SankaEpisode, SankaSource
+│   └── repo/                  # SankaRepository, PlayerRepository
 ├── ui/
 │   ├── splash/  main/  detail/  episode/  player/  settings/
 │   └── adapter/

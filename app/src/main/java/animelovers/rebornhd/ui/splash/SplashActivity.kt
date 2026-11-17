@@ -5,7 +5,6 @@ import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import animelovers.rebornhd.R
-import animelovers.rebornhd.app
 import animelovers.rebornhd.databinding.ActivitySplashBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.main.MainActivity
@@ -20,7 +19,8 @@ import kotlinx.coroutines.launch
  * Tampilan: logo splashh.png (350×400dp) + "AnimLovers" 40sp + kredit dev
  * "Dibuat ulang oleh Hadi as Faygo" di posisi teks versi aslinya.
  * Dialog Disclaimer muncul sekali saat pertama buka (pref eulaKey).
- * Bila backend kecil ada: cek GET /health diam-diam — gagal = lanjut saja.
+ * v2: TIDAK ADA lagi cek backend /health (server kecil sudah dihapus —
+ * sumber konten kini API Sanka langsung).
  */
 class SplashActivity : BaseActivity() {
 
@@ -31,14 +31,7 @@ class SplashActivity : BaseActivity() {
         binding = ActivitySplashBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Cek backend diam-diam (bila dipasang) — hasilnya diabaikan di v1,
-        // tidak pernah membunuh aplikasi seperti checkloc aslinya.
-        if (app().playerRepository.hasBackend) {
-            lifecycleScope.launch {
-                runCatching { app().playerRepository.checkBackendHealth() }
-            }
-        }
-
+        // v2: tidak ada cek backend (server kecil dihapus) — langsung disclaimer/Main.
         if (prefs.eulaKey != "1") {
             showDisclaimer()
         } else {

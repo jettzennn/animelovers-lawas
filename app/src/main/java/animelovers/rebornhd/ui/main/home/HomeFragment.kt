@@ -11,9 +11,11 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
-import animelovers.rebornhd.data.model.Anime
+import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.model.SankaAnime
+import animelovers.rebornhd.data.model.SankaEpisodeItem
+import animelovers.rebornhd.data.model.SankaHome
 import animelovers.rebornhd.databinding.FragmentHomeBinding
-import animelovers.rebornhd.ui.adapter.InfoAdapter
 import animelovers.rebornhd.ui.adapter.MostViewAdapter
 import animelovers.rebornhd.ui.adapter.SlideAdapter
 import animelovers.rebornhd.ui.adapter.UpdateAdapter
@@ -23,17 +25,23 @@ import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.isOnline
 import animelovers.rebornhd.util.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * Beranda — adaptasi fragment_home asli.
- * Slider (auto-scroll 3 detik) + Episode Baru (grid 3, 9 item + Lainnya)
- * + Terlaris (horizontal, 10 teratas) + Info (DISEMBUNYIKAN di v1: tidak
- * ada pengumuman dari backend).
+ * Slider (auto-scroll 3 detik) + Episode Baru (horizontal, 9 item + Lainnya)
+ * + Terlaris (horizontal, 10 teratas). Info DIHAPUS di v2 (desain.md §14).
  *
- * "Terlaris" = urutan skor tertinggi — Anikoto tidak memberi jumlah tonton
- * (proksi, didokumentasikan di MostViewAdapter).
+ * Sumber (Sanka, satu request /home):
+ * - Slider = home.featured (5 pertama).
+ * - Episode Baru = home.latestEpisodes (item EPISODE: judul "… Episode N",
+ *   ketuk → Detail anime-nya; disaring Ecchi dengan mencocokkan animeSlug
+ *   ke daftar ber-genre di respons home yang sama — anime yang tidak ada
+ *   di daftar itu tetap tampil, playback-nya tetap dikunci Detail).
+ * - Terlaris = home.popular (popularWeekly, lalu popularAllTime) —
+ *   badge jumlah tonton hanya bila Sanka menyediakannya (views > 0).
  */
 class HomeFragment : Fragment() {
 
@@ -43,9 +51,8 @@ class HomeFragment : Fragment() {
     private lateinit var slideAdapter: SlideAdapter
     private lateinit var updateAdapter: UpdateAdapter
     private lateinit var mostViewAdapter: MostViewAdapter
-    private lateinit var infoAdapter: InfoAdapter
 
-    private var recent: List<Anime> = emptyList()
+    private var home: SankaHome? = null
     private var lastEcchiUnlocked: Boolean? = null
 
     override fun onCreateView(
@@ -60,14 +67,11 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Info: tidak ada pengumuman di v1 → seksi disembunyikan seluruhnya.
-        binding.layoutInfo.visibility = View.GONE
-
         slideAdapter = SlideAdapter { openDetail(it) }
         binding.simpleAdapterViewFlipper.adapter = slideAdapter
         binding.simpleAdapterViewFlipper.isUserInputEnabled = true
 
-        updateAdapter = UpdateAdapter { openDetail(it) }
+        updateAdapter = UpdateAdapter { openDetailFromEpisode(it) }
         binding.recyclerViewUpdate.apply {
             // Horizontal (desain.md §4.1) — seperti aslinya.
             layoutManager = LinearLayoutManager(
@@ -83,13 +87,6 @@ class HomeFragment : Fragment() {
                 requireContext(), LinearLayoutManager.HORIZONTAL, false
             )
             adapter = mostViewAdapter
-            isNestedScrollingEnabled = false
-        }
-
-        infoAdapter = InfoAdapter()
-        binding.recyclerViewInfo.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = infoAdapter
             isNestedScrollingEnabled = false
         }
 
@@ -129,8 +126,19 @@ class HomeFragment : Fragment() {
         lastEcchiUnlocked = unlocked
     }
 
-    private fun openDetail(anime: Anime) {
-        DetailActivity.start(requireContext(), anime.id.toString(), anime.displayTitle, anime.poster)
+    private fun openDetail(anime: SankaAnime) {
+        val slug = anime.slug ?: return
+        DetailActivity.start(requireContext(), slug, anime.displayTitle, anime.posterUrl)
+    }
+
+    private fun openDetailFromEpisode(item: SankaEpisodeItem) {
+        val slug = item.animeSlug ?: return
+        DetailActivity.start(
+            requireContext(),
+            slug,
+            item.animeTitle ?: item.title ?: "",
+            item.posterUrl
+        )
     }
 
     private fun load() {
@@ -139,28 +147,42 @@ class HomeFragment : Fragment() {
             requireContext().toast(getString(R.string.tidak_ada_koneksi))
             return
         }
+        // Nyalakan spinner di awal — sebelumnya spinner hanya muncul saat
+        // pull-to-refresh, jadi kegagalan instan terlihat tanpa tanda loading.
+        binding.swipeContainerHome.isRefreshing = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                recent = requireContext().app().animeRepository.recentAnime(1)
+                home = requireContext().app().sankaRepository.home()
                 applyData()
+            } catch (e: RateLimitException) {
+                // Pesan rate limit persis (desain.md §14.3) — jangan
+                // disamarkan jadi "Gagal memuat".
+                requireContext().toast(getString(R.string.terlalu_banyak_permintaan))
+            } catch (e: CancellationException) {
+                // Pembatalan (layar ditinggalkan) harus lolos — jangan
+                // ditelan jadi toast "Gagal memuat".
+                throw e
             } catch (e: Exception) {
                 requireContext().toast(getString(R.string.gagal_memuat))
             } finally {
-                binding.swipeContainerHome.isRefreshing = false
+                if (isAdded) {
+                    _binding?.swipeContainerHome?.isRefreshing = false
+                }
             }
         }
     }
 
     private fun applyData() {
+        val data = home ?: return
+        val repo = requireContext().app().sankaRepository
         val unlocked = (activity as? MainActivity)?.isEcchiUnlocked() ?: false
         lastEcchiUnlocked = unlocked
-        val visible = requireContext().app().animeRepository.visibleAnimes(recent, unlocked)
-        slideAdapter.submitList(visible.take(5))
-        updateAdapter.submitList(visible.take(9))
-        val mostView = visible
-            .sortedByDescending { it.score.toDoubleOrNull() ?: 0.0 }
-            .take(10)
-        mostViewAdapter.submitList(mostView)
+        val featured = repo.visibleAnimes(data.featured.orEmpty(), unlocked)
+        slideAdapter.submitList(featured.take(5))
+        val latest = repo.visibleEpisodes(data.latestEpisodes.orEmpty(), data, unlocked)
+        updateAdapter.submitList(latest.take(9))
+        val popular = repo.visibleAnimes(data.popular, unlocked)
+        mostViewAdapter.submitList(popular.take(10))
     }
 
     override fun onDestroyView() {

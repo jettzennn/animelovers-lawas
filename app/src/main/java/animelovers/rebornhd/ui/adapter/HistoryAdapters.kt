@@ -7,7 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 import animelovers.rebornhd.R
 import animelovers.rebornhd.data.local.entity.FavoriteEntity
 import animelovers.rebornhd.data.local.entity.VideoEntity
-import animelovers.rebornhd.data.model.Anime
+import animelovers.rebornhd.data.model.SankaAnime
 import animelovers.rebornhd.databinding.ItemEpisodeBinding
 import animelovers.rebornhd.databinding.ItemFavoritesHeaderBinding
 import animelovers.rebornhd.databinding.ItemHistoryBinding
@@ -150,7 +150,7 @@ class HistoryDetailAdapter(
  * ada favorit, sehingga seksi hilang seluruhnya (desain.md §4.3).
  */
 class FavoritesHeaderAdapter(
-    private val onClick: (Anime) -> Unit
+    private val onClick: (SankaAnime) -> Unit
 ) : RecyclerView.Adapter<FavoritesHeaderAdapter.Holder>() {
 
     private var items: List<FavoriteEntity> = emptyList()
@@ -184,7 +184,7 @@ class FavoritesHeaderAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         gridAdapter?.submitList(items.map {
-            Anime(id = it.idtitle.toIntOrNull() ?: 0, title = it.title, poster = it.idposter)
+            SankaAnime(slug = it.idtitle, title = it.title, poster = it.idposter)
         })
     }
 

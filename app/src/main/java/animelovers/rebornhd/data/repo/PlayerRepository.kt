@@ -1,348 +1,332 @@
 package animelovers.rebornhd.data.repo
 
-import android.content.Context
-import android.net.Uri
-import animelovers.rebornhd.data.api.ResolveData
-import animelovers.rebornhd.data.api.SubtitleApi
-import animelovers.rebornhd.data.api.VidCloudApi
-import animelovers.rebornhd.data.model.VideoSource
-import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.data.model.PlayableKind
+import animelovers.rebornhd.data.model.PlayableSource
+import animelovers.rebornhd.data.model.SankaEpisodeData
+import animelovers.rebornhd.data.model.SankaEpisodeListItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import kotlin.coroutines.cancellation.CancellationException
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.net.URI
+import java.util.concurrent.TimeUnit
 
 /**
- * Resolve satu episode menjadi [VideoSource] yang bisa diputar player.
+ * Hasil resolve satu episode — daftar kandidat putar + info pendukung.
  *
- * Urutan (PRD §3.5 + Riset T1):
- * 1. Bila backend kecil terpasang ([Constants.BACKEND_BASE_URL] terisi):
- *    GET /resolve → HLS + tracks. Bila gagal, jatuh ke jalur langsung.
- *    `mega_embed_id` (episode_embed_id Anikoto) SELALU dikirim supaya
- *    backend bisa fallback ke MegaPlay bila VidCloud gagal semua.
- * 2. Jalur langsung: VidCloud getSources server 1 → 2 → 3.
- * 3. Subtitle Indonesia:
- *    a. Track berlabel "Indonesian" dari getSources (native) → pakai
- *       langsung HANYA bila isinya terverifikasi Indonesia (port
- *       `server/src/lib/native-track.js`: VTT valid, ≥5 cue, ≥3 penanda
- *       BERBEDA Bahasa Indonesia di 3000 karakter pertama). Bila tidak
- *       terverifikasi → anggap tidak ada track native (fail-closed).
- *    b. Bila tidak ada dan backend ada → GET /subtitle/id (translate + cache).
- *    c. Bila backend tidak ada/tidak terjangkau → VTT Inggris langsung.
- * 4. JANGAN PERNAH menampilkan track berlabel Indonesia yang isinya Inggris.
+ * @property candidates kandidat Media3/WebView, terurut sesuai prioritas
+ *   T1b (Pixeldrain 720p → token 720p → Blogger 22 → Blogger 18 → embed).
+ * @property embedUrl URL embed untuk WebView (default_iframe / sumber embed).
+ * @property downloadUrl URL file .mp4 langsung (Pixeldrain) untuk
+ *   DownloadManager — null bila episode tidak punya sumber Pixeldrain
+ *   (downloads[] Sanka HANYA berisi halaman unduhan, bukan URL file).
+ * @property prevSlug / nextSlug slug episode sebelum/berikutnya (null bila
+ *   tidak ada) — dari respons /episode.
+ * @property episodeList daftar episode seri ini (untuk next/prev player).
+ * @property bloggerIframeUrl URL iframe Blogger untuk fetch lazy (#6):
+ *   bila kandidat direct/token sudah ada, HTML Blogger TIDAK diambil saat
+ *   resolve — player mengambilnya belakangan hanya bila semua kandidat
+ *   itu gagal sebelum jatuh ke embed.
+ */
+data class EpisodeSources(
+    val candidates: List<PlayableSource>,
+    val embedUrl: String?,
+    val downloadUrl: String?,
+    val episodeNumber: Int,
+    val episodeTitle: String,
+    val prevSlug: String?,
+    val nextSlug: String?,
+    val episodeList: List<SankaEpisodeListItem>,
+    val bloggerIframeUrl: String? = null
+)
+
+/**
+ * Resolve episode Sanka menjadi sumber yang bisa diputar.
  *
- * Bila sumbernya MegaPlay, HLS + track VTT diputar LEWAT PROXY backend
- * (`hls_proxy` / `proxy_url`) — URL MegaPlay langsung akan 403 karena
- * butuh header Referer persis (proxy menyetelnya server-side).
+ * Prioritas putar (REVISI T1b — riset/api-lokal-t1b-2026-11-17.md,
+ * menggantikan PRD v2 §3.3):
+ *  1. Pixeldrain direct 720p dari `sources[]` (kind "direct", label
+ *     "Pixel HD", URL https://pixeldrain.com/api/file/<id>).
+ *  2. Stream token Animekompi 720p dari `mirrors[]` (type "mp4" —
+ *     URL https://v10.animekompi.sbs/api/episodes/stream/<token>,
+ *     206 Partial Content video/mp4 terbukti live).
+ *  3. Blogger hasil ekstrak: ambil HTML `default_iframe`
+ *     (blogger.com/video.g?token=…), regex URL videoplayback,
+ *     potong di `\&quot;`, decode escape \uXXXX — pilih itag 22 (720p)
+ *     dulu, lalu itag 18 (360p).
+ *  4. WebView embed (`default_iframe` atau sumber embed pertama) —
+ *     fallback terakhir (D2 = W).
  *
- * Subtitle translate bisa datang SEBAGIAN (header X-Subtitle-Status:
- * partial) — [fetchSubtitleId] mengembalikan statusnya supaya player
- * bisa meminta ulang tiap ~15 detik sampai complete.
- *
- * URL ber-token (?t=) hanya hidup di memori selama pemutaran — TIDAK PERNAH
- * disimpan di DB (PRD §3.5).
+ * URL hasil ekstrak/token diambil SEGAR tiap putar (di sini, saat
+ * resolve) — TIDAK PERNAH disimpan di DB/riwayat (kedaluwarsa: expire +
+ * sig + terikat IP). Fallback antar sumber OTOMATIS (player mencoba
+ * kandidat berikutnya bila yang sekarang error) — tanpa tanya pengguna.
+ * Bila semua gagal → candidates kosong + embedUrl null → player
+ * menampilkan toast jujur.
  */
 class PlayerRepository(
-    private val context: Context,
-    private val vidCloud: VidCloudApi = VidCloudApi(),
-    private val subtitleApi: SubtitleApi? =
-        Constants.BACKEND_BASE_URL.ifBlank { null }?.let { SubtitleApi.create(it) }
+    private val sankaRepository: SankaRepository
 ) {
 
-    val hasBackend: Boolean get() = subtitleApi != null
+    private val bloggerClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
-    /** Hasil satu kali ambil subtitle Indonesia dari backend. */
-    data class SubtitleFetch(
-        val file: File,
-        /** "complete" | "partial" (dari header X-Subtitle-Status). */
-        val status: String,
-        /** "native" | "translated" (dari header X-Subtitle-Source). */
-        val kind: String,
-        val vttText: String
-    )
+    suspend fun resolve(episodeSlug: String): EpisodeSources {
+        val episode = sankaRepository.episode(episodeSlug)
 
-    /**
-     * Ambil VTT Indonesia dari backend (sekali ambil; tulis ke cache file).
-     * @return null bila backend tidak ada / gagal / bukan WEBVTT.
-     * CancellationException TIDAK ditelan — pemanggil (polling) harus berhenti.
-     */
-    suspend fun fetchSubtitleId(
-        aniId: Int,
-        episode: Int,
-        megaEmbedId: String? = null
-    ): SubtitleFetch? {
-        val api = subtitleApi ?: return null
-        return try {
-            val response = api.subtitleId(aniId, episode, megaEmbedId)
-            val body = response.body() ?: return null
-            val vtt = body.string()
-            if (!vtt.contains("WEBVTT")) return null
-            // retrofit2.Response TIDAK punya method header(name) — itu
-            // milik okhttp3.Headers. Baca lewat response.headers()[nama].
-            val status = response.headers()["X-Subtitle-Status"] ?: "complete"
-            val kind = response.headers()["X-Subtitle-Source"] ?: "translated"
-            val file = File(context.cacheDir, "sub_id_${aniId}_$episode.vtt")
-            file.writeText(vtt)
-            SubtitleFetch(file, status, kind, vtt)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /** Gabungkan path proxy relatif ("/proxy/hls?u=...") dengan base URL backend. */
-    private fun absoluteProxy(path: String): String {
-        if (path.isBlank()) return ""
-        if (!path.startsWith("/")) return path
-        return Constants.BACKEND_BASE_URL.trimEnd('/') + path
-    }
-
-    // ---- Validasi track "Indonesian" native (port server) ----
-    // Satu sumber kebenaran di server: `server/src/lib/native-track.js`
-    // + `server/src/lib/translate.js` (looksIndonesian) +
-    // `server/src/lib/vtt.js` (parseVtt). Kriteria sama persis:
-    // VTT valid, ≥5 cue, dan 3000 karakter pertama mengandung ≥3 penanda
-    // BERBEDA Bahasa Indonesia. Penanda yang sama berulang hanya
-    // dihitung sekali — nama tokoh dalam dialog Inggris ("Dan", "Yang")
-    // bisa muncul berkali-kali, dan bila dihitung total, VTT Inggris
-    // lolos sebagai Indonesia (temuan Pentest T18 M1). Gagal unduh
-    // (mis. 403) / timeout / isi tidak valid semuanya berarti
-    // "tidak terverifikasi" (fail-closed).
-
-    private val indonesianMarkerRe = Regex(
-        "\\b(yang|dan|adalah|sebuah|ketika|dengan|untuk|dalam|seorang|mereka|tersebut|sehingga|namun|karena|kemudian)\\b",
-        RegexOption.IGNORE_CASE
-    )
-
-    private val vttTimestampRe = Regex(
-        "^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})(?:\\s+.*)?$"
-    )
-
-    // Hitung penanda BERBEDA, bukan total kemunculan (lihat komentar
-    // di atas: nama tokoh "Dan"/"Yang" yang berulang hanya 1 penanda).
-    private fun looksIndonesian(text: String): Boolean =
-        indonesianMarkerRe.findAll(text).map { it.value.lowercase() }.toSet().size >= 3
-
-    /** Hitung cue valid (port `vtt.parseVtt` — 0 bila bukan VTT valid). */
-    private fun countCues(vttText: String): Int {
-        val clean = vttText.trimStart('\uFEFF')
-        if (!clean.startsWith("WEBVTT")) return 0
-        val lines = clean.split('\n')
-        var count = 0
-        var i = 0
-        // Lewati blok header (sampai baris kosong pertama).
-        while (i < lines.size && lines[i].trim().isNotEmpty()) i++
-        while (i < lines.size) {
-            // Lewati baris kosong.
-            while (i < lines.size && lines[i].trim().isEmpty()) i++
-            if (i >= lines.size) break
-            val first = lines[i].trim()
-            // Blok NOTE / STYLE / REGION: lewati sampai baris kosong.
-            if (first == "NOTE" || first.startsWith("NOTE ") ||
-                first == "STYLE" || first == "REGION"
-            ) {
-                while (i < lines.size && lines[i].trim().isNotEmpty()) i++
-                continue
+        // (3) Blogger hasil ekstrak itag 22 (720p) → 18 (360p) — LAZY (#6):
+        // bila kandidat prioritas lebih tinggi (direct/token) sudah ada,
+        // HTML Blogger TIDAK diambil sekarang (boros — satu request +
+        // ~28 KB tiap putar). Player mengambilnya belakangan hanya bila
+        // semua kandidat itu gagal sebelum jatuh ke embed (lihat
+        // VideoPlayActivity.tryNextCandidate + fetchBloggerCandidates).
+        // Bila tidak ada direct/token sama sekali, ambil sekarang seperti
+        // dulu — Blogger adalah satu-satunya jalan 720p yang tersisa.
+        val bloggerUrls = if (hasDirectOrToken(episode)) {
+            emptyMap()
+        } else {
+            val bloggerUrl = bloggerIframeUrl(episode)
+            if (!bloggerUrl.isNullOrBlank()) {
+                runCatching { fetchBloggerUrls(bloggerUrl) }.getOrDefault(emptyMap())
+            } else {
+                emptyMap()
             }
-            // Baris pengenal cue (bukan timestamp) → baris berikut harus timestamp.
-            var tsLine = first
-            if (!vttTimestampRe.matches(tsLine)) {
-                i++
-                if (i >= lines.size) break
-                tsLine = lines[i].trim()
-                if (!vttTimestampRe.matches(tsLine)) {
-                    // Bukan cue yang valid — lewati blok ini.
-                    while (i < lines.size && lines[i].trim().isNotEmpty()) i++
-                    continue
-                }
-            }
-            i++
-            // Lewati baris teks cue sampai baris kosong.
-            var hasText = false
-            while (i < lines.size && lines[i].trim().isNotEmpty()) {
-                hasText = true
-                i++
-            }
-            if (hasText) count++
         }
-        return count
-    }
-
-    /** true hanya bila VTT terbukti Indonesia. Tidak pernah melempar. */
-    private fun isIndonesianVtt(text: String): Boolean {
-        return try {
-            countCues(text) >= 5 && looksIndonesian(text.take(3000))
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /** Ambil VTT dari URL lalu validasi — false bila gagal/tidak valid. */
-    private suspend fun isValidIndonesianTrack(url: String): Boolean {
-        val text = try {
-            vidCloud.fetchText(url)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
-        } ?: return false
-        return isIndonesianVtt(text)
+        return buildCandidates(episode, bloggerUrls)
     }
 
     /**
-     * Resolve episode. [aniId] = ani_id Anikoto (fallback mal_id).
-     * [megaEmbedId] = episode_embed_id Anikoto (untuk fallback MegaPlay).
-     * @return null bila semua sumber gagal (player menampilkan pesan error).
+     * Ambil + ekstrak URL Blogger (lazy — dipanggil player hanya bila
+     * kandidat direct/token sudah gagal dan sebelum jatuh ke embed).
+     * Gagal jaringan / bukan Blogger → daftar kosong (fallback ke embed).
      */
-    suspend fun resolve(
-        aniId: Int,
-        episode: Int,
-        megaEmbedId: String? = null
-    ): VideoSource? {
-        // 1. Backend dulu (bila ada).
-        subtitleApi?.let { api ->
-            try {
-                val response = api.resolve(aniId, episode, megaEmbedId)
-                val data = response.data
-                if (data != null && data.hls.isNotBlank()) {
-                    return buildFromBackend(aniId, episode, data, megaEmbedId)
-                }
+    suspend fun fetchBloggerCandidates(iframeUrl: String): List<PlayableSource> {
+        val urls = runCatching { fetchBloggerUrls(iframeUrl) }.getOrDefault(emptyMap())
+        return buildList {
+            urls[22]?.let { add(PlayableSource(it, PlayableKind.BLOGGER_720, "720p")) }
+            urls[18]?.let { add(PlayableSource(it, PlayableKind.BLOGGER_360, "360p")) }
+        }
+    }
+
+    /** Ada kandidat di atas Blogger (direct 720p atau token 720p)? */
+    private fun hasDirectOrToken(episode: SankaEpisodeData): Boolean {
+        val hasDirect = episode.sources.orEmpty().any { item -> isPixeldrain(item.url) }
+        if (hasDirect) return true
+        return episode.mirrors.orEmpty().any { mirror ->
+            mirror.type == "mp4" && isStreamToken(mirror.url)
+        }
+    }
+
+    companion object {
+        /**
+         * Susun kandidat putar dari respons /episode + URL Blogger hasil
+         * ekstrak — fungsi MURNI (tanpa jaringan, bisa diuji unit).
+         * Prioritas T1b: (1) Pixeldrain direct 720p, (2) token Animekompi
+         * 720p, (3) Blogger itag 22 → 18, (4) WebView embed.
+         * (1b) "direct lain" DIHAPUS (L1): tidak ada host allowlist yang
+         * bisa diberikan untuk kind "direct" generik — satu-satunya file
+         * direct yang terverifikasi adalah Pixeldrain ("BerkasDrive" di
+         * riset ternyata halaman player = embed, bukan file).
+         */
+        fun buildCandidates(
+            episode: SankaEpisodeData,
+            bloggerUrls: Map<Int, String>
+        ): EpisodeSources {
+            val candidates = mutableListOf<PlayableSource>()
+            var downloadUrl: String? = null
+
+            // (1) Pixeldrain direct 720p dari sources[].
+            val pixeldrain = episode.sources.orEmpty().firstOrNull { item ->
+                isPixeldrain(item.url)
+            }
+            val pixeldrainUrl = pixeldrain?.url?.takeIf { it.isNotBlank() }
+            if (pixeldrainUrl != null) {
+                candidates += PlayableSource(pixeldrainUrl, PlayableKind.DIRECT_720, "720p")
+                downloadUrl = pixeldrainUrl
+            }
+
+            // (2) Stream token Animekompi 720p dari mirrors[] (type "mp4").
+            val token = episode.mirrors.orEmpty().firstOrNull { mirror ->
+                mirror.type == "mp4" && isStreamToken(mirror.url)
+            }
+            val tokenUrl = token?.url?.takeIf { it.isNotBlank() }
+            if (tokenUrl != null) {
+                candidates += PlayableSource(tokenUrl, PlayableKind.TOKEN_720, "720p")
+            }
+
+            // (3) Blogger hasil ekstrak itag 22 (720p) → 18 (360p).
+            bloggerUrls[22]?.let { url ->
+                candidates += PlayableSource(url, PlayableKind.BLOGGER_720, "720p")
+            }
+            bloggerUrls[18]?.let { url ->
+                candidates += PlayableSource(url, PlayableKind.BLOGGER_360, "360p")
+            }
+
+            // (4) WebView embed — fallback terakhir. URL embed wajib https +
+            // host publik (L1): host literal IP/localhost ditolak.
+            val embedUrl = episode.defaultIframe
+                ?.takeIf { it.isNotBlank() && isHttpsPublicHost(it) }
+                ?: episode.sources.orEmpty()
+                    .firstOrNull {
+                        it.kind == "embed" && !it.url.isNullOrBlank() &&
+                            isHttpsPublicHost(it.url)
+                    }?.url
+            if (!embedUrl.isNullOrBlank()) {
+                candidates += PlayableSource(
+                    embedUrl, PlayableKind.EMBED, "480p", isWebView = true
+                )
+            }
+
+            return EpisodeSources(
+                candidates = candidates,
+                embedUrl = embedUrl,
+                downloadUrl = downloadUrl,
+                episodeNumber = episode.episodeNumber,
+                episodeTitle = episode.title ?: "",
+                prevSlug = episode.prevSlug,
+                nextSlug = episode.nextSlug,
+                episodeList = episode.episodeList.orEmpty(),
+                bloggerIframeUrl = bloggerIframeUrl(episode)
+            )
+        }
+
+        /** URL iframe Blogger untuk episode ini (sumber embed / default_iframe). */
+        private fun bloggerIframeUrl(episode: SankaEpisodeData): String? =
+            episode.sources.orEmpty()
+                .firstOrNull { isBlogger(it.url) }?.url
+                ?: episode.defaultIframe?.takeIf { isBlogger(it) }
+
+        /**
+         * Validasi URL dari respons Sanka (L1 — Pentest v2): semua URL
+         * kandidat HARUS https + host yang diharapkan, dinilai dari URI
+         * yang di-parse (java.net.URI — bukan android.net.Uri, supaya
+         * tetap bisa diuji unit di JVM). Cek substring TIDAK cukup
+         * ("pixeldrain.com/api/file/" di path/query host lain lolos).
+         * Gagal parse / bukan https / tanpa host → null (ditolak).
+         */
+        private fun parseHttpsUrl(url: String?): URI? {
+            val uri = try {
+                URI((url ?: "").trim())
             } catch (e: Exception) {
-                // Backend gagal = lanjut ke jalur langsung (bukan error fatal).
+                return null
             }
+            if (uri.scheme?.lowercase() != "https") return null
+            if (uri.host.isNullOrBlank()) return null
+            return uri
         }
-        // 2. Jalur langsung: VidCloud.
-        val sources = vidCloud.getSourcesAnyServer(aniId, episode) ?: return null
-        val hls = sources.sources.firstOrNull { it.file.isNotBlank() }?.file
-            ?: return null
-        return buildFromVidCloud(sources, hls, aniId, episode, megaEmbedId)
+
+        /** Host literal IP / localhost — tidak boleh jadi tujuan video/unduh/embed. */
+        private fun isIpOrLocalhostHost(host: String): Boolean {
+            val h = host.lowercase()
+            if (h == "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true
+            if (':' in h) return true // literal IPv6
+            return h.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$"))
+        }
+
+        /**
+         * https + host BUKAN literal IP/localhost — untuk embed dan direct
+         * generik yang host-nya memang bervariasi (allowlist tidak mungkin:
+         * host embed di data live saja sudah blogger.com, abyssplayer.com,
+         * mecdn.website, ok.ru, rumble.com).
+         */
+        private fun isHttpsPublicHost(url: String?): Boolean {
+            val uri = parseHttpsUrl(url) ?: return false
+            return !isIpOrLocalhostHost(uri.host)
+        }
+
+        /**
+         * Pixeldrain direct = URL file langsung (bukan halaman daftar).
+         * Bentuk live: kind "direct", label "Pixel HD",
+         * URL https://pixeldrain.com/api/file/<id>.
+         * Halaman daftar pixeldrain.com/u/<id> (yang ada di downloads[])
+         * BUKAN file — tidak diterima di sini.
+         */
+        private fun isPixeldrain(url: String?): Boolean {
+            val uri = parseHttpsUrl(url) ?: return false
+            if (uri.host.lowercase() != "pixeldrain.com") return false
+            return uri.path?.startsWith("/api/file/") == true
+        }
+
+        /**
+         * Blogger embed: hanya URL-nya yang dinilai (L1) — label "gdrive"/
+         * "blogger" dengan host sembarang TIDAK diterima lagi. Bentuk live:
+         * https://www.blogger.com/video.g?token=…
+         */
+        private fun isBlogger(url: String?): Boolean {
+            val uri = parseHttpsUrl(url) ?: return false
+            val host = uri.host.lowercase()
+            return host == "blogger.com" || host.endsWith(".blogger.com")
+        }
+
+        /** Stream token Animekompi: https + host v10/v11.animekompi.sbs (L1). */
+        private fun isStreamToken(url: String?): Boolean {
+            val uri = parseHttpsUrl(url) ?: return false
+            val host = uri.host.lowercase()
+            return host == "v10.animekompi.sbs" || host == "v11.animekompi.sbs"
+        }
+
+        /**
+         * Ekstrak URL videoplayback dari HTML embed Blogger — fungsi MURNI
+         * (tanpa jaringan, bisa diuji unit).
+         *
+         * Aturan (T1b, diuji live pada HTML Ao no Hako S2 ep 1, 27.708 byte):
+         * - Cari `https://<host>---sn-<…>.googlevideo.com/videoplayback…`
+         * - Potong di urutan `\&quot;` (backslash + &quot;) — BUKAN di
+         *   backslash pertama (URL mengandung escape \u003d DI DALAM
+         *   query string; memotong di situ memenggal URL).
+         * - Decode escape: \u003d → "=", \u0026 → "&", \u002F → "/".
+         * - Ambil itag dari query: 22 = 720p, 18 = 360p. Tanpa itag → buang.
+         * - Bila satu itag muncul berkali-kali (varian param berbeda),
+         *   pakai yang pertama ditemukan.
+         * - Host SUDAH dikunci regex ke `*.googlevideo.com` (L1): pola di
+         *   atas memuat host itu secara literal — URL hasil ekstrak tidak
+         *   perlu validasi host tambahan (ditegaskan lagi di bawah).
+         */
+        fun extractBloggerUrls(html: String): Map<Int, String> {
+            val result = mutableMapOf<Int, String>()
+            val pattern = Regex(
+                """https://[a-z0-9\-]+---sn-[a-z0-9\-]+\.googlevideo\.com/videoplayback.*?\\&quot;"""
+            )
+            val itagPattern = Regex("[?&]itag=(\\d+)")
+            for (match in pattern.findAll(html)) {
+                var url = match.value.dropLast("\\&quot;".length)
+                url = url
+                    .replace("\\u003d", "=")
+                    .replace("\\u003D", "=")
+                    .replace("\\u0026", "&")
+                    .replace("\\u002F", "/")
+                // L1: tegaskan host hasil decode masih googlevideo (regex
+                // sudah menguncinya — yang keluar dari pola dibuang).
+                if (!url.startsWith("https://") ||
+                    ".googlevideo.com/videoplayback" !in url
+                ) continue
+                val itag = itagPattern.find(url)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: continue
+                if ((itag == 22 || itag == 18) && itag !in result) {
+                    result[itag] = url
+                }
+            }
+            return result
+        }
     }
 
-    private suspend fun buildFromBackend(
-        aniId: Int,
-        episode: Int,
-        data: ResolveData,
-        megaEmbedId: String?
-    ): VideoSource {
-        val isMegaPlay = data.source.equals("megaplay", ignoreCase = true)
-        // MegaPlay → lewat proxy (Referer disetel server-side).
-        val hlsUrl = if (isMegaPlay && data.hlsProxy.isNotBlank()) {
-            absoluteProxy(data.hlsProxy)
-        } else {
-            data.hls
-        }
-        // Track dari /resolve: bila MegaPlay, pakai proxy_url-nya.
-        fun trackUrl(url: String, proxyUrl: String): String =
-            if (isMegaPlay && proxyUrl.isNotBlank()) absoluteProxy(proxyUrl) else url
-
-        var subtitleIdUri: Uri? = null
-        var subtitleIdKind: String? = null
-        var subtitleIdStatus: String? = null
-        // Track Indonesia native dari backend (bila /resolve sudah menyediakannya).
-        val nativeId = data.tracks.firstOrNull {
-            it.lang.equals("id", ignoreCase = true) ||
-                it.lang.equals("indonesian", ignoreCase = true)
-        }
-        if (nativeId != null && nativeId.url.isNotBlank()) {
-            subtitleIdUri = Uri.parse(trackUrl(nativeId.url, nativeId.proxyUrl))
-            subtitleIdKind = "native"
-            subtitleIdStatus = "complete"
-        } else {
-            // Minta VTT Indonesia hasil translate + cache.
-            val fetched = fetchSubtitleId(aniId, episode, megaEmbedId)
-            if (fetched != null) {
-                subtitleIdUri = Uri.fromFile(fetched.file)
-                subtitleIdKind = fetched.kind
-                subtitleIdStatus = fetched.status
+    /**
+     * Ambil HTML iframe Blogger lalu ekstrak URL videoplayback.
+     * Gagal jaringan / bukan Blogger → peta kosong (fallback ke embed).
+     */
+    private suspend fun fetchBloggerUrls(iframeUrl: String): Map<Int, String> {
+        // L1: jangan GET ke host sembarang — hanya iframe Blogger.
+        if (!isBlogger(iframeUrl)) return emptyMap()
+        return withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(iframeUrl).build()
+            bloggerClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyMap<Int, String>()
+                val html = response.body?.string() ?: return@withContext emptyMap<Int, String>()
+                extractBloggerUrls(html)
             }
-        }
-        val enTrack = data.tracks.firstOrNull {
-            it.lang.equals("en", ignoreCase = true) ||
-                it.lang.equals("english", ignoreCase = true)
-        }
-        val enUrl = enTrack?.let { trackUrl(it.url, it.proxyUrl) }
-        return VideoSource(
-            hlsUrl = hlsUrl,
-            subtitleIdUri = subtitleIdUri,
-            subtitleIdKind = subtitleIdKind,
-            subtitleIdStatus = subtitleIdStatus,
-            subtitleEnUrl = enUrl,
-            serverLabel = data.serverLabel ?: "",
-            server = data.server ?: 0,
-            introStart = data.intro?.start ?: 0,
-            introEnd = data.intro?.end ?: 0,
-            outroStart = data.outro?.start ?: 0,
-            outroEnd = data.outro?.end ?: 0
-        )
-    }
-
-    private suspend fun buildFromVidCloud(
-        sources: animelovers.rebornhd.data.model.VidCloudSources,
-        hls: String,
-        aniId: Int,
-        episode: Int,
-        megaEmbedId: String?
-    ): VideoSource {
-        // a. Track Indonesia native — HARUS divalidasi isinya (fail-closed,
-        //    port `server/src/lib/native-track.js`): label "Indonesian"
-        //    belum tentu isinya Indonesia. Bila VTT tidak bisa diambil
-        //    (mis. 403) atau isinya bukan Indonesia → anggap tidak ada
-        //    track native; rantai fallback di bawah (translate backend,
-        //    lalu Inggris) yang jalan — sama seperti perilaku server
-        //    ("gagal validasi isi — lanjut translate dari Inggris").
-        val nativeId = sources.tracks.firstOrNull {
-            it.label.equals("Indonesian", ignoreCase = true)
-        }
-        var subtitleIdUri: Uri? = null
-        var subtitleIdKind: String? = null
-        var subtitleIdStatus: String? = null
-        if (nativeId != null && nativeId.file.isNotBlank() &&
-            isValidIndonesianTrack(nativeId.file)
-        ) {
-            subtitleIdUri = Uri.parse(nativeId.file)
-            subtitleIdKind = "native"
-            subtitleIdStatus = "complete"
-        }
-        // b. Bila tidak ada track native dan backend ada → translate.
-        if (subtitleIdUri == null && subtitleApi != null) {
-            val fetched = fetchSubtitleId(aniId, episode, megaEmbedId)
-            if (fetched != null) {
-                subtitleIdUri = Uri.fromFile(fetched.file)
-                subtitleIdKind = fetched.kind
-                subtitleIdStatus = fetched.status
-            }
-        }
-        // c. Fallback Inggris (server 1 diutamakan — getSourcesAnyServer
-        //    sudah mencoba server 1 dulu; bila ini server 2/3, VTT-nya
-        //    bisa 403 dari IP tertentu — player tetap jalan tanpa subtitle
-        //    bila unduhan VTT gagal, dan itu ditangani di VideoPlayActivity).
-        val enUrl = sources.tracks.firstOrNull {
-            it.label.equals("English", ignoreCase = true)
-        }?.file
-        return VideoSource(
-            hlsUrl = hls,
-            subtitleIdUri = subtitleIdUri,
-            subtitleIdKind = subtitleIdKind,
-            subtitleIdStatus = subtitleIdStatus,
-            subtitleEnUrl = enUrl,
-            serverLabel = sources.sources.firstOrNull()?.label ?: "",
-            server = sources.server,
-            introStart = sources.introStart,
-            introEnd = sources.introEnd,
-            outroStart = sources.outroStart,
-            outroEnd = sources.outroEnd
-        )
-    }
-
-    /** Cek hidup backend (untuk Splash) — gagal = lanjut saja, bukan error. */
-    suspend fun checkBackendHealth(): Boolean {
-        val api = subtitleApi ?: return false
-        return try {
-            withContext(Dispatchers.IO) { api.health() }
-            true
-        } catch (e: Exception) {
-            false
         }
     }
 }

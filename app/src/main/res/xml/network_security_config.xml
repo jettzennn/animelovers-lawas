@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keamanan jaringan: cleartext (http) HANYA untuk localhost / IP privat
-     (backend kecil di Termux saat pengembangan). Semua host publik WAJIB https.
+<!-- Keamanan jaringan: SEMUA host WAJIB https (cleartext dimatikan).
+     v2: pengecualian cleartext localhost / IP privat DIHAPUS bersama
+     backend kecil — aplikasi tidak lagi bicara ke localhost.
      Jangan longgarkan ini tanpa alasan — Pentest akan memeriksa. -->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-        <domain includeSubdomains="true">192.168.0.0</domain>
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <domain includeSubdomains="true">172.16.0.0</domain>
-    </domain-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

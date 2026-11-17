@@ -47,8 +47,9 @@ class HistoryFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         favoritesAdapter = FavoritesHeaderAdapter { anime ->
+            val slug = anime.slug ?: return@FavoritesHeaderAdapter
             DetailActivity.start(
-                requireContext(), anime.id.toString(), anime.displayTitle, anime.poster
+                requireContext(), slug, anime.displayTitle, anime.posterUrl
             )
         }
         historyAdapter = HistoryAdapter(
@@ -57,7 +58,7 @@ class HistoryFragment : Fragment() {
             },
             onDelete = { item: VideoEntity ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    requireContext().app().animeRepository.deleteHistory(item.idui)
+                    requireContext().app().sankaRepository.deleteHistory(item.idui)
                     load()
                 }
             }
@@ -87,7 +88,7 @@ class HistoryFragment : Fragment() {
 
     private fun load() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val repo = requireContext().app().animeRepository
+            val repo = requireContext().app().sankaRepository
             val favorites: List<FavoriteEntity> = repo.getFavorites()
             val history: List<VideoEntity> = repo.getHistory()
             favoritesAdapter.submitList(favorites)

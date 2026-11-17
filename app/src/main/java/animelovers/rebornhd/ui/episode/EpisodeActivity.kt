@@ -7,32 +7,38 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
+import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.model.SankaDetail
 import animelovers.rebornhd.databinding.ActivityEpisodeBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
  * Semua episode satu anime — adaptasi EpisodeActivity asli
  * (activity_episode_lainnya). Grid 4 kolom portrait / 8 landscape.
  * Dibuka dari "Lainnya" di Detail bila episode > 40.
+ * v2 (Sanka): daftar lengkap dari detail.episodes (tanpa cap — RecyclerView
+ * ini scroll sendiri, jadi recycling jalan).
  */
 class EpisodeActivity : BaseActivity() {
 
     private lateinit var binding: ActivityEpisodeBinding
     private lateinit var adapter: EpisodeAdapter
 
-    private var animeId: String = ""
+    private var animeSlug: String = ""
     private var animeTitle: String = ""
     private var animePoster: String = ""
+    private var detail: SankaDetail? = null
 
     companion object {
-        fun start(context: Context, animeId: String, title: String, poster: String) {
+        fun start(context: Context, animeSlug: String, title: String, poster: String) {
             val intent = Intent(context, EpisodeActivity::class.java).apply {
-                putExtra(Constants.EXTRA_ID_TITLE, animeId)
+                putExtra(Constants.EXTRA_ID_TITLE, animeSlug)
                 putExtra(Constants.EXTRA_TITLE, title)
                 putExtra(Constants.EXTRA_POSTER, poster)
             }
@@ -45,7 +51,7 @@ class EpisodeActivity : BaseActivity() {
         binding = ActivityEpisodeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        animeId = intent.getStringExtra(Constants.EXTRA_ID_TITLE).orEmpty()
+        animeSlug = intent.getStringExtra(Constants.EXTRA_ID_TITLE).orEmpty()
         animeTitle = intent.getStringExtra(Constants.EXTRA_TITLE).orEmpty()
         animePoster = intent.getStringExtra(Constants.EXTRA_POSTER).orEmpty()
 
@@ -54,7 +60,7 @@ class EpisodeActivity : BaseActivity() {
         binding.toolbarEpisodeLainnya.setNavigationOnClickListener { finish() }
 
         adapter = EpisodeAdapter { episode ->
-            VideoPlayActivity.start(this, animeId, animeTitle, animePoster, episode)
+            openPlayer(episode)
         }
         binding.recyclerEpisodeLainnya.apply {
             layoutManager = GridLayoutManager(
@@ -73,20 +79,14 @@ class EpisodeActivity : BaseActivity() {
     private fun load() {
         lifecycleScope.launch {
             try {
-                val data = app().animeRepository.series(animeId)
-                if (data == null) {
-                    toast(getString(R.string.gagal_memuat))
-                    return@launch
-                }
+                val data = app().sankaRepository.detail(animeSlug)
+                detail = data
                 // Gerbang Ecchi (kunci ketiganya — Ecchi + Erotica + Hentai):
                 // halaman ini tidak dibuka dari Detail yang terkunci — tapi
                 // tetap tutup bila gerbang belum terbuka.
-                // data.anime nullable (SeriesData.anime: Anime?) — bila null,
-                // gerbang tidak bisa dievaluasi: anggap bukan Ecchi supaya
-                // daftar episode tetap tampil (jangan crash, jangan kunci).
-                val ecchi = data.anime?.genres?.any { genre ->
+                val ecchi = data.genreSlugs.any { genre ->
                     Constants.LOCKED_GENRES.any { it.equals(genre, ignoreCase = true) }
-                } ?: false
+                }
                 val unlocked = app().authRepository.isSignedIn() &&
                     prefs.ecchiEnabled == "1"
                 if (ecchi && !unlocked) {
@@ -94,16 +94,33 @@ class EpisodeActivity : BaseActivity() {
                     finish()
                     return@launch
                 }
-                val episodes = data.episodes
+                val episodes = data.episodes.orEmpty()
                     .map { it.number }
+                    .filter { it > 0 }
                     .distinct()
                     .sorted()
                 adapter.submitList(episodes)
+            } catch (e: RateLimitException) {
+                toast(getString(R.string.terlalu_banyak_permintaan))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 toast(getString(R.string.gagal_memuat))
             } finally {
                 binding.swipeContainereeee.isRefreshing = false
             }
         }
+    }
+
+    private fun openPlayer(episode: Int) {
+        // Slug episode ASLI dari respons detail — jangan dirangkai sendiri.
+        val episodeSlug = detail?.episodes.orEmpty()
+            .firstOrNull { it.number == episode }?.slug
+            ?.takeIf { it.isNotBlank() }
+        if (episodeSlug == null) {
+            toast(getString(R.string.gagal_memutar, episode))
+            return
+        }
+        VideoPlayActivity.start(this, animeSlug, animeTitle, animePoster, episode, episodeSlug)
     }
 }

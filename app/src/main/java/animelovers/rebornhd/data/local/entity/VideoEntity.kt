@@ -12,7 +12,7 @@ import androidx.room.PrimaryKey
  */
 @Entity(tableName = "video")
 data class VideoEntity(
-    /** ID anime (dari Anikoto series/{id}). */
+    /** Slug anime Sanka (v2; v1 berisi id angka Anikoto — dihapus migrasi v2). */
     val idtitle: String,
     val title: String,
     val idposter: String,

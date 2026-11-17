@@ -16,27 +16,37 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
-import animelovers.rebornhd.data.model.Anime
+import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.model.SankaAnime
+import animelovers.rebornhd.data.model.SankaGenre
 import animelovers.rebornhd.databinding.FragmentBrowseBinding
 import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.adapter.BrowseListAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * Jelajahi — adaptasi BrowseFragment asli (menu_browser: Spinner genre +
  * SearchView + toggle list/grid).
  *
- * Katalog dimuat halaman demi halaman dari /recent-anime (471 halaman) dan
- * difilter LOKAL (genre + judul) — pola asli: katalog dimuat sekaligus lalu
- * filter lokal. Pencarian HANYA menyaring halaman yang sudah termuat
- * (dijelaskan di laporan; sinkronisasi penuh 471 halaman berjalan progresif
- * di latar belakang, bukan instan).
+ * v2 (Sanka): pencarian + genre DILAKUKAN SERVER-SIDE — tidak ada lagi
+ * katalog 471 halaman yang dimuat lalu difilter lokal.
+ * - Default (genre "Semua", tanpa query): daftar dari home (ongoing +
+ *   completed + movies) — tanpa request tambahan (home di-cache).
+ * - Genre dipilih → GET /anime/animekompi/genre/{slug} (halaman 1).
+ * - Ketik judul → GET /anime/animekompi/search?q=… dengan debounce
+ *   ~0,5 detik + spinner selama meminta (desain.md §14.6).
+ * - Spinner genre diisi dari genre item yang sudah termuat ("Semua"
+ *   langsung, genre lain menyusul seiring data masuk).
+ * - Query kosong TIDAK memanggil /search (Sanka menjawab 400).
  *
  * Genre Ecchi disembunyikan dari spinner + hasil bila gerbang belum terbuka.
+ * Rate limit (429) ditampilkan dengan pesan persis, tanpa retry membabi buta.
  */
 class BrowseFragment : Fragment() {
 
@@ -46,18 +56,35 @@ class BrowseFragment : Fragment() {
     private lateinit var gridAdapter: BrowseGridAdapter
     private lateinit var listAdapter: BrowseListAdapter
 
-    private val allItems = mutableListOf<Anime>()
-    private val genres = mutableListOf<String>()
-    private var genreFilter: String? = null
+    /** Daftar yang sedang tampil (dari home / genre / search). */
+    private var currentItems: List<SankaAnime> = emptyList()
+
+    /** Opsi genre spinner (nama tampil + slug untuk /genre). */
+    private val genreOptions = mutableListOf<SankaGenre>()
+    private val genreNames = mutableListOf<String>()
+    private var genreFilterSlug: String? = null
     private var query: String = ""
+
     // Tampilan default "list" (pola asli, pref browslist) — toggle menyimpan pilihan.
     private var isGrid: Boolean = false
     private var spinnerReady = false
     private var loadJob: Job? = null
+    private var searchJob: Job? = null
     private var loadingDone = false
 
-    private val onAnimeClick: (Anime) -> Unit = { anime ->
-        DetailActivity.start(requireContext(), anime.id.toString(), anime.displayTitle, anime.poster)
+    /** SearchView di toolbar — disimpan agar reload() bisa mereset teksnya. */
+    private var searchView: SearchView? = null
+
+    /**
+     * Penahan callback query saat reload() mereset teks SearchView —
+     * tanpa ini, setQuery("") memicu onQueryTextChange → refresh()
+     * kedua (duplikat load yang sudah dijalankan reload()).
+     */
+    private var suppressQueryCallback: Boolean = false
+
+    private val onAnimeClick: (SankaAnime) -> Unit = { anime ->
+        val slug = anime.slug ?: return@BrowseFragment
+        DetailActivity.start(requireContext(), slug, anime.displayTitle, anime.posterUrl)
     }
 
     override fun onCreateView(
@@ -94,6 +121,7 @@ class BrowseFragment : Fragment() {
 
         binding.swipeContainer.setOnRefreshListener { reload() }
 
+        genreNames.add(getString(R.string.semua_genre))
         setupToolbar()
         load()
     }
@@ -112,7 +140,7 @@ class BrowseFragment : Fragment() {
         val spinnerAdapter = ArrayAdapter(
             requireContext(),
             R.layout.item_spinner,
-            genres
+            genreNames
         ).apply { setDropDownViewResource(R.layout.item_spinner_dropdown) }
         spinner.adapter = spinnerAdapter
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -122,27 +150,36 @@ class BrowseFragment : Fragment() {
                     spinnerReady = true
                     return
                 }
-                genreFilter = if (pos == 0) null else genres[pos]
-                applyFilter()
+                genreFilterSlug = if (pos == 0) null else genreOptions.getOrNull(pos - 1)?.slug
+                refresh()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>) = Unit
         }
 
-        // Pencarian.
+        // Pencarian server-side (debounce ~0,5 detik).
         val searchView = menu.findItem(R.id.action_search).actionView as SearchView
+        this.searchView = searchView
         searchView.queryHint = getString(R.string.cari_anime)
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(q: String?): Boolean {
+                searchJob?.cancel()
                 query = q.orEmpty()
-                applyFilter()
+                refresh()
                 searchView.clearFocus()
                 return true
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                query = newText.orEmpty()
-                applyFilter()
+                if (suppressQueryCallback) return true
+                val text = newText.orEmpty()
+                searchJob?.cancel()
+                searchJob = viewLifecycleOwner.lifecycleScope.launch {
+                    delay(500L)
+                    if (!isAdded) return@launch
+                    query = text
+                    refresh()
+                }
                 return true
             }
         })
@@ -173,26 +210,33 @@ class BrowseFragment : Fragment() {
 
     private fun reload() {
         loadJob?.cancel()
-        allItems.clear()
-        genres.clear()
-        genres.add(getString(R.string.semua_genre))
+        searchJob?.cancel()
+        query = ""
+        genreFilterSlug = null
         loadingDone = false
-        applyFilter()
+        // Reset teks SearchView juga (sebelumnya query/genre direset tapi
+        // teks pencarian lama tetap tampil — menyesatkan).
+        suppressQueryCallback = true
+        searchView?.setQuery("", false)
+        suppressQueryCallback = false
         load()
     }
 
+    /** Muat daftar default (home) — tanpa request tambahan bila home di-cache. */
     private fun load() {
-        val repo = requireContext().app().animeRepository
+        val repo = requireContext().app().sankaRepository
         loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            binding.swipeContainer.isRefreshing = true
             try {
-                repo.loadCatalogPages(
-                    onPage = { page ->
-                        allItems.addAll(page)
-                        rebuildGenres()
-                        applyFilter()
-                    },
-                    isActive = { isAdded && _binding != null }
-                )
+                currentItems = repo.home().browseDefault
+                rebuildGenres()
+                applyFilter()
+            } catch (e: RateLimitException) {
+                if (isAdded) {
+                    requireContext().toast(getString(R.string.terlalu_banyak_permintaan))
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (isAdded) {
                     requireContext().toast(getString(R.string.gagal_memuat))
@@ -207,45 +251,80 @@ class BrowseFragment : Fragment() {
         }
     }
 
-    /** Genre unik dari katalog yang sudah termuat; Ecchi disembunyikan bila terkunci. */
+    /**
+     * Satu titik masuk untuk pencarian/genre: query non-kosong → search;
+     * bila tidak, genre terpilih → /genre; bila tidak ada keduanya →
+     * daftar default (home). Request lama dibatalkan (satu layar =
+     * satu request berjalan).
+     */
+    private fun refresh() {
+        val repo = requireContext().app().sankaRepository
+        loadJob?.cancel()
+        loadingDone = false
+        loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            binding.swipeContainer.isRefreshing = true
+            try {
+                currentItems = when {
+                    query.isNotBlank() -> repo.search(query.trim())
+                    genreFilterSlug != null -> repo.genre(genreFilterSlug!!)
+                    else -> repo.home().browseDefault
+                }
+                rebuildGenres()
+                applyFilter()
+            } catch (e: RateLimitException) {
+                if (isAdded) {
+                    requireContext().toast(getString(R.string.terlalu_banyak_permintaan))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isAdded) {
+                    requireContext().toast(getString(R.string.gagal_memuat))
+                }
+            } finally {
+                loadingDone = true
+                if (isAdded) {
+                    binding.swipeContainer.isRefreshing = false
+                    applyFilter()
+                }
+            }
+        }
+    }
+
+    /** Genre unik dari daftar yang sedang tampil; Ecchi disembunyikan bila terkunci. */
     private fun rebuildGenres() {
         val unlocked = (activity as? MainActivity)?.isEcchiUnlocked() ?: false
-        val visible = repoVisible(allItems, unlocked)
-        val found = visible.flatMap { it.genres }.distinct().sorted()
-        val selected = genreFilter
-        genres.clear()
-        genres.add(getString(R.string.semua_genre))
-        genres.addAll(found)
+        val visible = requireContext().app().sankaRepository
+            .visibleAnimes(currentItems, unlocked)
+        val found = visible.flatMap { it.genres.orEmpty() }
+            .filter { it.slug != null && it.name != null }
+            .distinctBy { it.slug }
+            .sortedBy { it.name }
+        val selectedSlug = genreFilterSlug
+        genreOptions.clear()
+        genreOptions.addAll(found)
+        genreNames.clear()
+        genreNames.add(getString(R.string.semua_genre))
+        genreNames.addAll(found.mapNotNull { it.name })
         (binding.toolbarBrowser.menu.findItem(R.id.miSpinner).actionView as? Spinner)
             ?.let { spinner ->
                 (spinner.adapter as? ArrayAdapter<*>)?.notifyDataSetChanged()
                 // Pertahankan pilihan bila genre masih ada.
-                val index = if (selected == null) 0 else genres.indexOf(selected).coerceAtLeast(0)
+                val index = if (selectedSlug == null) 0
+                else (genreOptions.indexOfFirst { it.slug == selectedSlug } + 1)
+                    .coerceAtLeast(0)
                 if (spinner.selectedItemPosition != index) {
                     spinner.setSelection(index, false)
                 }
             }
     }
 
-    private fun repoVisible(list: List<Anime>, unlocked: Boolean): List<Anime> =
-        requireContext().app().animeRepository.visibleAnimes(list, unlocked)
-
+    /** Hanya saringan Ecchi lokal — genre + query sudah disaring server. */
     private fun applyFilter() {
         if (_binding == null) return
         val unlocked = (activity as? MainActivity)?.isEcchiUnlocked() ?: false
-        var filtered = repoVisible(allItems, unlocked)
-        genreFilter?.let { genre ->
-            filtered = filtered.filter { anime ->
-                anime.genres.any { it.equals(genre, ignoreCase = true) }
-            }
-        }
-        if (query.isNotBlank()) {
-            val q = query.trim().lowercase()
-            filtered = filtered.filter { anime ->
-                anime.displayTitle.lowercase().contains(q) ||
-                    anime.title.lowercase().contains(q)
-            }
-        }
+        val filtered = requireContext().app().sankaRepository
+            .visibleAnimes(currentItems, unlocked)
         if (isGrid) gridAdapter.submitList(filtered) else listAdapter.submitList(filtered)
         binding.emptyBrowse.visibility =
             if (filtered.isEmpty() && loadingDone) View.VISIBLE else View.GONE
@@ -253,6 +332,7 @@ class BrowseFragment : Fragment() {
 
     override fun onDestroyView() {
         loadJob?.cancel()
+        searchJob?.cancel()
         super.onDestroyView()
         _binding = null
     }

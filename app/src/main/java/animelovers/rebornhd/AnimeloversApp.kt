@@ -1,13 +1,13 @@
 package animelovers.rebornhd
 
 import android.app.Application
-import animelovers.rebornhd.data.api.AnikotoApi
-import animelovers.rebornhd.data.api.VidCloudApi
+import animelovers.rebornhd.data.api.SankaApi
 import animelovers.rebornhd.data.auth.AuthRepository
 import animelovers.rebornhd.data.auth.StubAuthRepository
 import animelovers.rebornhd.data.local.AppDatabase
-import animelovers.rebornhd.data.repo.AnimeRepository
 import animelovers.rebornhd.data.repo.PlayerRepository
+import animelovers.rebornhd.data.repo.SankaRepository
+import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.Prefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +19,9 @@ import kotlinx.coroutines.SupervisorJob
  * Auth: [authRepository] saat ini [StubAuthRepository] (Firebase belum dipasang).
  * Bila proyek Firebase baru sudah dibuat (docs/firebase-setup.md), ganti
  * satu baris ini ke implementasi Firebase — UI + gerbang tidak berubah.
+ *
+ * v2: satu-satunya sumber konten adalah Sanka (sankaApi + sankaRepository).
+ * Anikoto/VidCloud/MegaPlay/backend kecil sudah dihapus.
  */
 class AnimeloversApp : Application() {
 
@@ -28,17 +31,23 @@ class AnimeloversApp : Application() {
 
     val prefs: Prefs by lazy { Prefs(this) }
     val database: AppDatabase by lazy { AppDatabase.get(this) }
-    val anikotoApi: AnikotoApi by lazy { AnikotoApi.create() }
-    val vidCloudApi: VidCloudApi by lazy { VidCloudApi() }
+    val sankaApi: SankaApi by lazy {
+        SankaApi.create(
+            Constants.SANKA_BASE_URL,
+            Constants.SANKA_CONNECT_TIMEOUT_S,
+            Constants.SANKA_READ_TIMEOUT_S,
+            Constants.SANKA_MIN_INTERVAL_MS
+        )
+    }
 
     val authRepository: AuthRepository by lazy { StubAuthRepository(this) }
 
-    val animeRepository: AnimeRepository by lazy {
-        AnimeRepository(anikotoApi, database)
+    val sankaRepository: SankaRepository by lazy {
+        SankaRepository(sankaApi, database.videoDao(), database.favoriteDao())
     }
 
     val playerRepository: PlayerRepository by lazy {
-        PlayerRepository(this, vidCloudApi)
+        PlayerRepository(sankaRepository)
     }
 }
 

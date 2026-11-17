@@ -7,21 +7,22 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
-import animelovers.rebornhd.data.model.Anime
+import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.model.SankaAnime
 import animelovers.rebornhd.databinding.ActivityLainnyaBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
  * "Lainnya" dari Beranda — adaptasi activity_lainnya asli.
  * Dua mode: "Update Lainnya" (Episode Baru, urutan terbaru) dan
- * "Terlaris" (urutan skor tertinggi).
- * Grid 3 kolom portrait / 6 landscape. v1: 3 halaman pertama katalog
- * (60 judul) — cukup untuk daftar "Lainnya"; katalog penuh ada di Jelajahi.
+ * "Terlaris" (urutan Sanka popularWeekly — server yang mengurutkan).
+ * Grid 3 kolom portrait / 6 landscape. v2: satu request /home (di-cache).
  */
 class LainnyaActivity : BaseActivity() {
 
@@ -56,8 +57,9 @@ class LainnyaActivity : BaseActivity() {
         binding.toolbarLainnya.setNavigationOnClickListener { finish() }
 
         adapter = BrowseGridAdapter { anime ->
+            val slug = anime.slug ?: return@BrowseGridAdapter
             DetailActivity.start(
-                this, anime.id.toString(), anime.displayTitle, anime.poster
+                this, slug, anime.displayTitle, anime.posterUrl
             )
         }
         binding.recyclerViewLainnya.apply {
@@ -77,20 +79,38 @@ class LainnyaActivity : BaseActivity() {
     private fun load() {
         lifecycleScope.launch {
             try {
-                val repo = app().animeRepository
-                val items = mutableListOf<Anime>()
-                for (page in 1..3) {
-                    items.addAll(repo.recentAnime(page))
-                }
+                val repo = app().sankaRepository
+                val home = repo.home()
                 val unlocked = app().authRepository.isSignedIn() &&
                     prefs.ecchiEnabled == "1"
-                val visible = repo.visibleAnimes(items, unlocked)
-                val sorted = if (mode == MODE_MOSTVIEW) {
-                    visible.sortedByDescending { it.score.toDoubleOrNull() ?: 0.0 }
+                val items: List<SankaAnime> = if (mode == MODE_MOSTVIEW) {
+                    // Terlaris: urutan server (popularWeekly) — jangan diurut
+                    // ulang (Sanka tidak memberi skor; views hanya badge).
+                    repo.visibleAnimes(home.popular, unlocked)
                 } else {
-                    visible
+                    // Episode Baru: kartu per episode (judul "… Episode N"),
+                    // ketuk → Detail anime-nya (slug = anime_slug).
+                    // Disaring Ecchi DULU via visibleEpisodes — hasil peta
+                    // ke SankaAnime membawa genres = null, jadi tidak bisa
+                    // disaring sesudah dipetakan.
+                    val visible = repo.visibleEpisodes(
+                        home.latestEpisodes.orEmpty(), home, unlocked
+                    )
+                    visible.map { episode ->
+                        SankaAnime(
+                            slug = episode.animeSlug,
+                            title = episode.title ?: episode.animeTitle,
+                            poster = episode.posterUrl,
+                            type = episode.animeType,
+                            status = episode.animeStatus
+                        )
+                    }
                 }
-                adapter.submitList(sorted)
+                adapter.submitList(items)
+            } catch (e: RateLimitException) {
+                toast(getString(R.string.terlalu_banyak_permintaan))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 toast(getString(R.string.gagal_memuat))
             } finally {

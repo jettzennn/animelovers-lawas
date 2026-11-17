@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Player — adaptasi activity_video.xml asli. ExoPlayer 2.10.1 diganti Media3.
-     Layout kontrol kustom dipakai lewat app:controller_layout_id. -->
+     Layout kontrol kustom dipakai lewat app:controller_layout_id.
+     v2: + WebView embed (fallback terakhir, desain.md §14.5) + teks
+     "Memuat video…" di atas ProgressBar (desain.md §14.3). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/video_layout"
@@ -21,6 +23,87 @@
             app:controller_layout_id="@layout/exo_playback_control_view"
             app:show_buffering="when_playing" />
     </FrameLayout>
+
+    <!-- Mode WebView (embed) — bilah atas minimal: FAB kembali + judul +
+         label "480p" + tombol "720p" (bila ada kandidat 720p). -->
+    <LinearLayout
+        android:id="@+id/webViewContainer"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:id="@+id/webViewTopBar"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#4d000000"
+            android:padding="8dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/webViewBack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:fabSize="mini"
+                app:backgroundTint="@color/putih"
+                app:srcCompat="@drawable/ic_arrow_back_black_24dp" />
+
+            <TextView
+                android:id="@+id/webViewTitle"
+                android:textSize="14sp"
+                android:textColor="@android:color/white"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp" />
+
+            <TextView
+                android:id="@+id/webViewQualityLabel"
+                android:textSize="12sp"
+                android:textColor="@android:color/white"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="480p" />
+
+            <TextView
+                android:id="@+id/webViewQuality720"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/white"
+                android:visibility="gone"
+                android:background="@drawable/rounded_corners"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="720p" />
+        </LinearLayout>
+
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_gravity="bottom|center_horizontal"
+        android:id="@+id/memuatVideoText"
+        android:textSize="14sp"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="64dp"
+        android:text="@string/memuat_video" />
 
     <ProgressBar
         android:layout_gravity="bottom|center_horizontal"

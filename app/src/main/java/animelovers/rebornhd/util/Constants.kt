@@ -2,38 +2,35 @@ package animelovers.rebornhd.util
 
 /**
  * Konstanta global. Satu tempat untuk semua nilai yang dipakai lintas layar.
- * URL backend kecil (PRD §3.6 Opsi A) diisi Backend/Deploy — KOSONG berarti
- * backend belum dipasang dan aplikasi memakai jalur langsung (VidCloud).
+ *
+ * v2 (Sanka): Anikoto + VidCloud + MegaPlay + backend kecil SUDAH DIHAPUS.
+ * Satu-satunya sumber konten adalah API Sanka Vollerei (Animekompi).
  */
 object Constants {
-    const val ANIKOTO_BASE_URL = "https://anikotoapi.site/"
-    const val VIDCLOUD_BASE_URL = "https://vidcloud.sbs/"
-    const val MEGAPLAY_BASE_URL = "https://megaplay.buzz/"
+    /** API Sanka Vollerei (sumber Animekompi). */
+    const val SANKA_BASE_URL = "https://www.sankavollerei.web.id/"
 
-    /** URL backend kecil (PRD §3.6). Server Node jalan di HP yang sama via
-     *  Termux: http://localhost:3100 (lihat animelovers-lawas/server/README.md).
-     *  Bila server TIDAK jalan, PlayerRepository jatuh ke jalur langsung
-     *  (VidCloud) + subtitle Inggris — aplikasi tetap bisa dipakai.
-     *  Bila backend dipindah ke hosting, ganti alamat ini (Deploy). */
-    const val BACKEND_BASE_URL = "http://localhost:3100"
+    // Timeout panggilan Sanka (alasan sama seperti v1: koneksi seluler
+    // Faygo terukur 1,1–3,4 KB/dtk; JSON home ~273 KB butuh puluhan detik
+    // di jaringan lambat — jangan terlalu pendek).
+    const val SANKA_CONNECT_TIMEOUT_S = 15L
+    const val SANKA_READ_TIMEOUT_S = 30L
+
+    /**
+     * Jeda minimum antar request Sanka (ms) — 1.400 ms ≈ 42 request/menit,
+     * di bawah batas 45/menit yang terukur di riset. 3 pelanggaran = BAN
+     * PERMANEN — jangan pernah mengecilkan angka ini (lihat
+     * SankaThrottleInterceptor).
+     */
+    const val SANKA_MIN_INTERVAL_MS = 1_400L
 
     const val GITHUB_REPO_URL = "https://github.com/jettzennn/animelovers-lawas"
-
-    // Timeout + retry panggilan katalog Anikoto (perbaikan "Gagal dimuat"
-    // 2026-11-17: koneksi seluler Faygo terukur 1,1–3,4 KB/dtk; JSON
-    // /recent-anime ~28 KB butuh ~8–25 dtk — timeout 8 dtk terlalu pendek).
-    // Connect 15 dtk (jabat tangan TCP+TLS butuh beberapa round-trip di
-    // jaringan padat); read 30 dtk (28 KB pada 1,1 KB/dtk ≈ 25,5 dtk).
-    const val ANIKOTO_CONNECT_TIMEOUT_S = 15L
-    const val ANIKOTO_READ_TIMEOUT_S = 30L
-    // Percobaan ulang panggilan Anikoto yang gagal karena jaringan.
-    const val ANIKOTO_MAX_ATTEMPTS = 3
-    const val ANIKOTO_RETRY_DELAY_MS = 2_000L
 
     // Extra intent (nama dipertahankan dari aslinya bila ada padanannya).
     const val EXTRA_ID_TITLE = "id_title"
     const val EXTRA_TITLE = "title"
     const val EXTRA_EPISODE = "episode"
+    const val EXTRA_EPISODE_SLUG = "episode_slug"
     const val EXTRA_POSTER = "poster"
     const val EXTRA_MOVIE = "movie"
     const val EXTRA_MODE = "lainnya"
@@ -48,7 +45,7 @@ object Constants {
     const val GENRE_HENTAI = "Hentai"
     val LOCKED_GENRES = setOf(GENRE_ECCHI, GENRE_EROTICA, GENRE_HENTAI)
 
-    // Cap episode di Detail (aturan asli: 40).
+    // Cap episode di Detail (aturan asli: 40) — sisanya di EpisodeActivity.
     const val DETAIL_EPISODE_CAP = 40
 
     // Resume: posisi tersimpan dikurangi 30 detik saat keluar player (aturan asli).
