@@ -95,7 +95,7 @@ dijalankan di Termux untuk menonton. Kode backend v1 diarsip di luar repo
 app/src/main/java/animelovers/rebornhd/
 ├── AnimeloversApp.kt          # Application + dependensi
 ├── data/
-│   ├── api/                   # SankaApi (satu-satunya API)
+│   ├── api/                   # SankaWebTransport (satu-satunya transport)
 │   ├── auth/                  # AuthRepository + StubAuthRepository
 │   ├── local/                 # Room: video + favorite (record.db, kunci slug)
 │   ├── model/                 # SankaAnime, SankaEpisode, SankaSource

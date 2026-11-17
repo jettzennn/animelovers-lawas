@@ -1,29 +1,66 @@
 package animelovers.rebornhd.data.repo
 
 import animelovers.rebornhd.data.api.RateLimitException
-import animelovers.rebornhd.data.api.SankaApi
+import animelovers.rebornhd.data.api.SankaHttpException
+import animelovers.rebornhd.data.api.SankaTransport
 import animelovers.rebornhd.data.local.FavoriteDao
 import animelovers.rebornhd.data.local.VideoDao
 import animelovers.rebornhd.data.local.entity.FavoriteEntity
 import animelovers.rebornhd.data.local.entity.VideoEntity
 import animelovers.rebornhd.data.model.SankaAnime
 import animelovers.rebornhd.data.model.SankaDetail
+import animelovers.rebornhd.data.model.SankaEnvelope
 import animelovers.rebornhd.data.model.SankaEpisodeData
 import animelovers.rebornhd.data.model.SankaEpisodeItem
 import animelovers.rebornhd.data.model.SankaHome
 import animelovers.rebornhd.util.Constants
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import retrofit2.Response
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Repository Sanka — pengganti repository v1 (Anikoto).
+ * Encode satu segmen path / nilai query (persen-encode UTF-8).
+ *
+ * Meniru perilaku Retrofit lama yang digantikan transport WebView:
+ * huruf/angka ASCII + `-._~` dibiarkan, sisanya jadi %XX (spasi → %20,
+ * `%` → %25 — double-encoding slug percent-encoded DITOLERANSI Sanka,
+ * dibuktikan Cari Bug v2.0.1: detail double-encoded → 200). Murni
+ * (bisa diuji tanpa Android — android.net.Uri melempar Stub di JVM).
+ */
+internal fun encodeSegment(value: String): String {
+    val hex = "0123456789ABCDEF"
+    val sb = StringBuilder()
+    for (octet in value.toByteArray(Charsets.UTF_8)) {
+        val c = octet.toInt() and 0xFF
+        if ((c in 0x30..0x39) || (c in 0x41..0x5A) || (c in 0x61..0x7A) ||
+            c == '-'.code || c == '.'.code || c == '_'.code || c == '~'.code
+        ) {
+            sb.append(c.toChar())
+        } else {
+            sb.append('%')
+            sb.append(hex[c shr 4])
+            sb.append(hex[c and 0x0F])
+        }
+    }
+    return sb.toString()
+}
+
+/**
+ * Repository Sanka — pengganti repository v2.0.0/2.0.1 (OkHttp).
+ *
+ * v2.0.2: transport diganti OkHttp → WebView tersembunyi (SankaWebTransport)
+ * — sidik TLS OkHttp diblokir Cloudflare dari IP HP Faygo, WebView adalah
+ * Chrome asli yang terbukti lolos. API PUBLIK repository TIDAK berubah
+ * (home/terbaru/search/genre/detail/episode + riwayat/favorit + gerbang
+ * Ecchi) — UI + PlayerRepository tidak disentuh.
  *
  * DISIPLIN RATE LIMIT (PRD v2 §4.3 — 3 pelanggaran = BAN PERMANEN):
- *  1. Throttle ≥1,4 detik antar request (SankaThrottleInterceptor, di client).
+ *  1. Throttle ≥1,4 detik antar request (di transport, bukan lagi
+ *     interceptor OkHttp).
  *  2. Cache agresif di memori (home/detail 10 menit, search/genre 5 menit).
  *  3. Dedup: fetch dengan kunci yang SAMA lewat SATU Mutex per kunci —
  *     request kedua menunggu yang pertama lalu mendapat hasil cache.
@@ -46,10 +83,12 @@ import java.util.concurrent.ConcurrentHashMap
  * memanggilnya langsung tanpa withContext tambahan.
  */
 class SankaRepository(
-    private val api: SankaApi,
+    private val transport: SankaTransport,
     private val videoDao: VideoDao,
     private val favoriteDao: FavoriteDao
 ) {
+
+    private val gson = Gson()
 
     // ---- Cache + dedup ----
 
@@ -63,7 +102,7 @@ class SankaRepository(
      * Mutex PER KUNCI cache — fetch `search:naruto` tidak menahan
      * `detail:x` (satu Mutex global dulu menahan semua fetch selama I/O
      * + backoff retry). Throttle 1,4 detik TETAP berlaku — itu di
-     * interceptor OkHttp, bukan di sini — jadi perbaikan ini tidak
+     * transport WebView, bukan di sini — jadi perbaikan ini tidak
      * membuka celah rate limit.
      */
     private val keyMutexes = mutableMapOf<String, Mutex>()
@@ -92,73 +131,99 @@ class SankaRepository(
         }
     }
 
+    // Gson mengembalikan null (bukan throw) untuk body kosong / literal
+    // `null` — samakan dengan converter Retrofit lama: itu IOException,
+    // bukan NPE yang bocor ke UI.
+    private inline fun <reified T> parseEnvelope(raw: String): SankaEnvelope<T> =
+        gson.fromJson(raw, object : TypeToken<SankaEnvelope<T>>() {}.type)
+            ?: throw IOException("Respons kosong dari Sanka")
+
     /**
-     * Satu panggilan HTTP dengan aturan retry:
-     * - 2xx → isi (body null = error).
+     * Satu panggilan dengan aturan retry — SAMA seperti callWithRetry lama
+     * (OkHttp Response), hanya sumbernya kini string JSON dari transport:
+     * - 2xx → parse (gagal parse = JsonSyntaxException, langsung lolos —
+     *   sama seperti converter Retrofit dulu).
      * - 429 → RateLimitException (TANPA retry, tanpa penundaan).
      * - 500–599 (scraper timeout) + IOException jaringan → retry maks 3×,
      *   backoff 2 dtk lalu 4 dtk.
      * - Selain itu → IOException langsung.
      * CancellationException TIDAK ditangkap — pembatalan harus lolos.
      */
-    private suspend fun <T> callWithRetry(block: suspend () -> Response<T>): T {
+    private suspend fun <T> callWithRetry(
+        block: suspend () -> String,
+        parse: (String) -> T
+    ): T {
         var attempt = 0
         while (true) {
             attempt++
-            val response = try {
+            val raw = try {
                 block()
+            } catch (e: SankaHttpException) {
+                if (e.statusCode in 500..599 && attempt < 3) {
+                    delay(2_000L * attempt)
+                    continue
+                }
+                throw IOException("Sanka menjawab ${e.statusCode}")
             } catch (e: IOException) {
                 if (attempt >= 3) throw e
                 delay(2_000L * attempt)
                 continue
             }
-            when {
-                response.isSuccessful -> {
-                    return response.body()
-                        ?: throw IOException("Respons kosong dari Sanka")
-                }
-                response.code() == 429 -> throw RateLimitException()
-                response.code() in 500..599 && attempt < 3 -> {
-                    delay(2_000L * attempt)
-                }
-                else -> throw IOException("Sanka menjawab ${response.code()}")
-            }
+            return parse(raw)
         }
     }
 
     // ---- Katalog ----
 
     suspend fun home(): SankaHome = cached("home", TTL_HOME_MS) {
-        val envelope = callWithRetry { api.home() }
+        val envelope = callWithRetry(
+            { transport.getJson("anime/animekompi/home") },
+            { raw -> parseEnvelope<SankaHome>(raw) }
+        )
         envelope.data ?: throw IOException("Beranda Sanka kosong")
     }
 
     suspend fun terbaru(page: Int = 1): List<SankaEpisodeItem> =
         cached("terbaru:$page", TTL_SEARCH_MS) {
-            val envelope = callWithRetry { api.terbaru(page) }
+            val envelope = callWithRetry(
+                { transport.getJson("anime/animekompi/terbaru?page=$page") },
+                { raw -> parseEnvelope<List<SankaEpisodeItem>>(raw) }
+            )
             envelope.data ?: emptyList()
         }
 
     suspend fun search(query: String, page: Int = 1): List<SankaAnime> =
         cached("search:$query:$page", TTL_SEARCH_MS) {
-            val envelope = callWithRetry { api.search(query, page) }
+            val envelope = callWithRetry(
+                { transport.getJson("anime/animekompi/search?q=${encodeSegment(query)}&page=$page") },
+                { raw -> parseEnvelope<List<SankaAnime>>(raw) }
+            )
             envelope.data ?: emptyList()
         }
 
     suspend fun genre(slug: String, page: Int = 1): List<SankaAnime> =
         cached("genre:$slug:$page", TTL_SEARCH_MS) {
-            val envelope = callWithRetry { api.genre(slug, page) }
+            val envelope = callWithRetry(
+                { transport.getJson("anime/animekompi/genre/${encodeSegment(slug)}?page=$page") },
+                { raw -> parseEnvelope<List<SankaAnime>>(raw) }
+            )
             envelope.data ?: emptyList()
         }
 
     suspend fun detail(slug: String): SankaDetail = cached("detail:$slug", TTL_DETAIL_MS) {
-        val envelope = callWithRetry { api.detail(slug) }
+        val envelope = callWithRetry(
+            { transport.getJson("anime/animekompi/detail/${encodeSegment(slug)}") },
+            { raw -> parseEnvelope<SankaDetail>(raw) }
+        )
         envelope.data ?: throw IOException("Detail Sanka kosong")
     }
 
     /** Episode: TANPA cache (URL sumber kedaluwarsa) — ambil segar tiap putar. */
     suspend fun episode(slug: String): SankaEpisodeData {
-        val envelope = callWithRetry { api.episode(slug) }
+        val envelope = callWithRetry(
+            { transport.getJson("anime/animekompi/episode/${encodeSegment(slug)}") },
+            { raw -> parseEnvelope<SankaEpisodeData>(raw) }
+        )
         return envelope.data ?: throw IOException("Episode Sanka kosong")
     }
 

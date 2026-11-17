@@ -7,8 +7,8 @@ UI (Activity/Fragment + Adapter + ViewBinding)
         ↓
 Repository (SankaRepository, PlayerRepository)
         ↓
-API (Retrofit/OkHttp)          Lokal (Room + SharedPreferences)
-  SankaApi (satu-satunya)       AppDatabase (record.db, kunci SLUG)
+API (WebView tersembunyi)       Lokal (Room + SharedPreferences)
+  SankaWebTransport (satu-satunya) AppDatabase (record.db, kunci SLUG)
   RateLimiter + cache           Prefs ("animlovers")
         ↓
 AuthRepository (seam login)
@@ -26,15 +26,15 @@ limit, cache, retry) harus hidup DI DALAM aplikasi.
 
 ## Alur data utama
 
-1. **Katalog** — `SankaApi.home()` → `featured` (slider), `latest`
+1. **Katalog** — `SankaRepository.home()` (via transport WebView) → `featured` (slider), `latest`
    (Episode Baru), `popular` (Terlaris). Jelajahi: pencarian server-side
    (`/search?q=`) + genre (`/genre/:slug`) — bukan filter lokal seperti v1.
-2. **Detail** — `SankaApi.detail(slug)` → judul, poster, status, genre,
+2. **Detail** — `SankaRepository.detail(slug)` → judul, poster, status, genre,
    deskripsi, daftar episode (`num/title/date/slug/url`). Beberapa field
    bisa null (`alt_title`, `score`) — model harus tahan null. **Jangan
    pernah** memanggil detail dengan slug episode (`/detail/<slug-episode>`
    → 404/500); detail hanya untuk slug serial.
-3. **Sumber episode** — `SankaApi.episode(slug)` (terkonfirmasi T1b) →
+3. **Sumber episode** — `SankaRepository.episode(slug)` (terkonfirmasi T1b) →
    `default_iframe` + `sources[]` + `mirrors[]` + `downloads[]`. Slug
    WAJIB dari respons detail — jangan dirangkai sendiri (contoh: ep 4
    Ao no Hako S2 slug-nya tanpa akhiran `-subtitle-indonesia`).
@@ -59,7 +59,7 @@ Sanka: **45 request/menit** (angka ketat), **3 pelanggaran → BAN
 PERMANEN** (IP diblokir selamanya). Satu ban mematikan aplikasi.
 
 - Throttle client-side: jeda minimum **≥ 1,4 detik** antar panggilan
-  Sanka (≈ 42/menit). Semua panggilan lewat satu gerbang (`SankaApi` +
+  Sanka (≈ 42/menit). Semua panggilan lewat satu gerbang (`SankaTransport` +
   `RateLimiter`) — tidak ada panggilan liar dari layar mana pun.
 - Tanpa fan-out paralel: satu layar = satu request berjalan; jangan ambil
   detail 10 judul sekaligus (pakai data `home` yang sudah ada).

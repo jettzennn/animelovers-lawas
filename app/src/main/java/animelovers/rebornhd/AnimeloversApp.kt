@@ -1,7 +1,8 @@
 package animelovers.rebornhd
 
 import android.app.Application
-import animelovers.rebornhd.data.api.SankaApi
+import animelovers.rebornhd.data.api.SankaTransport
+import animelovers.rebornhd.data.api.SankaWebTransport
 import animelovers.rebornhd.data.auth.AuthRepository
 import animelovers.rebornhd.data.auth.StubAuthRepository
 import animelovers.rebornhd.data.local.AppDatabase
@@ -20,8 +21,10 @@ import kotlinx.coroutines.SupervisorJob
  * Bila proyek Firebase baru sudah dibuat (docs/firebase-setup.md), ganti
  * satu baris ini ke implementasi Firebase — UI + gerbang tidak berubah.
  *
- * v2: satu-satunya sumber konten adalah Sanka (sankaApi + sankaRepository).
- * Anikoto/VidCloud/MegaPlay/backend kecil sudah dihapus.
+ * v2: satu-satunya sumber konten adalah Sanka (sankaTransport +
+ * sankaRepository). Anikoto/VidCloud/MegaPlay/backend kecil sudah dihapus.
+ * Transport v2.0.2: WebView tersembunyi (Chrome asli) — OkHttp pensiun
+ * (sidik TLS-nya diblokir Cloudflare dari IP HP Faygo).
  */
 class AnimeloversApp : Application() {
 
@@ -31,19 +34,19 @@ class AnimeloversApp : Application() {
 
     val prefs: Prefs by lazy { Prefs(this) }
     val database: AppDatabase by lazy { AppDatabase.get(this) }
-    val sankaApi: SankaApi by lazy {
-        SankaApi.create(
+    val sankaTransport: SankaTransport by lazy {
+        SankaWebTransport(
+            this,
             Constants.SANKA_BASE_URL,
-            Constants.SANKA_CONNECT_TIMEOUT_S,
-            Constants.SANKA_READ_TIMEOUT_S,
-            Constants.SANKA_MIN_INTERVAL_MS
+            Constants.SANKA_MIN_INTERVAL_MS,
+            Constants.SANKA_READ_TIMEOUT_S * 1000L
         )
     }
 
     val authRepository: AuthRepository by lazy { StubAuthRepository(this) }
 
     val sankaRepository: SankaRepository by lazy {
-        SankaRepository(sankaApi, database.videoDao(), database.favoriteDao())
+        SankaRepository(sankaTransport, database.videoDao(), database.favoriteDao())
     }
 
     val playerRepository: PlayerRepository by lazy {

@@ -18,8 +18,8 @@ android {
         targetSdk = 34
         // ATURAN TETAP: setiap rilis baru WAJIB menaikkan versionName (sama dengan tag GitHub)
         // dan versionCode (+1) — halaman Info aplikasi Android menampilkan versionName ini.
-        versionCode = 6
-        versionName = "2.0.1"
+        versionCode = 7
+        versionName = "2.0.2"
     }
 
     buildTypes {
@@ -84,8 +84,10 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.common)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.gson)
+    // Gson langsung (bukan via converter-gson): repository mem-parse JSON
+    // dari transport WebView sendiri. Retrofit pensiun di v2.0.2
+    // (transport OkHttp diganti WebView) — dependensinya ikut dihapus.
+    implementation(libs.gson)
     implementation(libs.okhttp)
     implementation(libs.coil)
     implementation(libs.room.runtime)

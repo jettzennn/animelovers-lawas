@@ -10,17 +10,19 @@ object Constants {
     /** API Sanka Vollerei (sumber Animekompi). */
     const val SANKA_BASE_URL = "https://www.sankavollerei.web.id/"
 
-    // Timeout panggilan Sanka (alasan sama seperti v1: koneksi seluler
+    // Batas waktu satu request Sanka (alasan sama seperti v1: koneksi seluler
     // Faygo terukur 1,1–3,4 KB/dtk; JSON home ~273 KB butuh puluhan detik
-    // di jaringan lambat — jangan terlalu pendek).
-    const val SANKA_CONNECT_TIMEOUT_S = 15L
+    // di jaringan lambat — jangan terlalu pendek). Dipakai transport
+    // WebView sebagai timeout manual (WebView tidak punya timeout bawaan).
+    // Timeout connect terpisah TIDAK ADA di WebView (tidak ada fase
+    // connect seperti OkHttp) — konstanta itu dihapus di v2.0.2.
     const val SANKA_READ_TIMEOUT_S = 30L
 
     /**
      * Jeda minimum antar request Sanka (ms) — 1.400 ms ≈ 42 request/menit,
      * di bawah batas 45/menit yang terukur di riset. 3 pelanggaran = BAN
      * PERMANEN — jangan pernah mengecilkan angka ini (lihat
-     * SankaThrottleInterceptor).
+     * SankaWebTransport).
      */
     const val SANKA_MIN_INTERVAL_MS = 1_400L
 
