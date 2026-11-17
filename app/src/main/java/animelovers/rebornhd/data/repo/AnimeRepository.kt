@@ -9,6 +9,7 @@ import animelovers.rebornhd.data.model.SeriesData
 import animelovers.rebornhd.util.Constants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import java.io.IOException
 
 /**
  * Katalog + detail + riwayat + favorit.
@@ -24,17 +25,40 @@ class AnimeRepository(
     private val db: AppDatabase
 ) {
 
+    /**
+     * Ulangi panggilan Anikoto yang gagal karena jaringan (timeout, koneksi
+     * putus, DNS) — hingga [Constants.ANIKOTO_MAX_ATTEMPTS] percobaan dengan
+     * jeda [Constants.ANIKOTO_RETRY_DELAY_MS]. Hanya IOException yang diulang
+     * (SocketTimeoutException, ConnectException, UnknownHostException);
+     * HttpException (server menjawab dengan status error) dan
+     * CancellationException (coroutine dibatalkan) langsung diteruskan.
+     */
+    private suspend fun <T> withAnikotoRetry(block: suspend () -> T): T {
+        var attempt = 1
+        while (true) {
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                if (attempt >= Constants.ANIKOTO_MAX_ATTEMPTS) throw e
+                attempt++
+                delay(Constants.ANIKOTO_RETRY_DELAY_MS)
+            }
+        }
+    }
+
     /** Episode terbaru, satu halaman (20 item). */
     suspend fun recentAnime(page: Int = 1): List<Anime> =
-        anikoto.recentAnime(page).data
+        withAnikotoRetry { anikoto.recentAnime(page).data }
 
     /** Total halaman katalog (471) — dibaca dari paginasi /recent-anime. */
     suspend fun totalPages(): Int =
-        anikoto.recentAnime(1).pagination?.totalPages ?: 1
+        withAnikotoRetry { anikoto.recentAnime(1).pagination?.totalPages } ?: 1
 
     /** Detail anime + daftar episode. */
     suspend fun series(id: String): SeriesData? =
-        anikoto.series(id).data
+        withAnikotoRetry { anikoto.series(id).data }
 
     /**
      * Muat katalog halaman demi halaman (1..totalPages) untuk Jelajahi.

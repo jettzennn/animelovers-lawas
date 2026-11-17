@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Katalog Anikoto — publik, tanpa key (terverifikasi live, Riset T1).
- * Timeout 8 detik connect/read (aturan asli, PRD §3.4).
+ * Timeout connect 15 dtk / read 30 dtk (Constants): koneksi seluler lambat
+ * (terukur 1,1–3,4 KB/dtk; JSON /recent-anime ~28 KB butuh ~8–25 dtk) —
+ * timeout 8 dtk lama membuat Beranda "Gagal dimuat" (2026-11-17).
  * TIDAK ADA logging interceptor: URL upstream tidak boleh bocor ke log (PRD §3.6).
  */
 interface AnikotoApi {
@@ -29,8 +31,8 @@ interface AnikotoApi {
     companion object {
         fun create(): AnikotoApi {
             val client = OkHttpClient.Builder()
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
+                .connectTimeout(Constants.ANIKOTO_CONNECT_TIMEOUT_S, TimeUnit.SECONDS)
+                .readTimeout(Constants.ANIKOTO_READ_TIMEOUT_S, TimeUnit.SECONDS)
                 .build()
             return Retrofit.Builder()
                 .baseUrl(Constants.ANIKOTO_BASE_URL)

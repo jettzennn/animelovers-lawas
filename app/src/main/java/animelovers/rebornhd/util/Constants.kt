@@ -19,6 +19,17 @@ object Constants {
 
     const val GITHUB_REPO_URL = "https://github.com/jettzennn/animelovers-lawas"
 
+    // Timeout + retry panggilan katalog Anikoto (perbaikan "Gagal dimuat"
+    // 2026-11-17: koneksi seluler Faygo terukur 1,1–3,4 KB/dtk; JSON
+    // /recent-anime ~28 KB butuh ~8–25 dtk — timeout 8 dtk terlalu pendek).
+    // Connect 15 dtk (jabat tangan TCP+TLS butuh beberapa round-trip di
+    // jaringan padat); read 30 dtk (28 KB pada 1,1 KB/dtk ≈ 25,5 dtk).
+    const val ANIKOTO_CONNECT_TIMEOUT_S = 15L
+    const val ANIKOTO_READ_TIMEOUT_S = 30L
+    // Percobaan ulang panggilan Anikoto yang gagal karena jaringan.
+    const val ANIKOTO_MAX_ATTEMPTS = 3
+    const val ANIKOTO_RETRY_DELAY_MS = 2_000L
+
     // Extra intent (nama dipertahankan dari aslinya bila ada padanannya).
     const val EXTRA_ID_TITLE = "id_title"
     const val EXTRA_TITLE = "title"
