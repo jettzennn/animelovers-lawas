@@ -238,7 +238,9 @@ prefs_props = set(re.findall(r"^\s*(?:var|val)\s+(\w+)", prefs_text, re.M))
 prefs_props |= set(re.findall(r"fun\s+(clear\w+)\s*\(", prefs_text))
 constants_file = JAVA / "animelovers" / "rebornhd" / "util" / "Constants.kt"
 constants_text = constants_file.read_text(encoding="utf-8")
-constants_names = set(re.findall(r"const\s+val\s+(\w+)", constants_text))
+constants_names = set(re.findall(r"^\s*(?:const\s+)?val\s+(\w+)", constants_text, re.M))
+# Catatan: LOCKED_GENRES adalah `val` biasa (Set tidak bisa `const`) —
+# regex lama yang hanya mengenali `const val` salah melaporkannya hilang.
 
 for f in kt_files:
     rel = f.relative_to(ROOT)

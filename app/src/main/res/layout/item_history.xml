@@ -77,7 +77,7 @@
 
         <ImageView
             android:textColor="?attr/textColor"
-            android:id="@+id/ImageViewTrash"
+            android:id="@+id/imageViewTrash"
             android:background="?attr/bgColor"
             android:layout_width="30dp"
             android:layout_height="30dp"

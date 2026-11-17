@@ -81,9 +81,12 @@ class EpisodeActivity : BaseActivity() {
                 // Gerbang Ecchi (kunci ketiganya — Ecchi + Erotica + Hentai):
                 // halaman ini tidak dibuka dari Detail yang terkunci — tapi
                 // tetap tutup bila gerbang belum terbuka.
-                val ecchi = data.anime.genres.any { genre ->
+                // data.anime nullable (SeriesData.anime: Anime?) — bila null,
+                // gerbang tidak bisa dievaluasi: anggap bukan Ecchi supaya
+                // daftar episode tetap tampil (jangan crash, jangan kunci).
+                val ecchi = data.anime?.genres?.any { genre ->
                     Constants.LOCKED_GENRES.any { it.equals(genre, ignoreCase = true) }
-                }
+                } ?: false
                 val unlocked = app().authRepository.isSignedIn() &&
                     prefs.ecchiEnabled == "1"
                 if (ecchi && !unlocked) {

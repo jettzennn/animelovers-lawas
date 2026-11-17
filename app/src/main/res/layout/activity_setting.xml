@@ -325,7 +325,7 @@
         <TextView
             android:textSize="18sp"
             android:textColor="?attr/textColor"
-            android:id="@+id/SaveText"
+            android:id="@+id/saveText"
             android:background="?attr/bgColor"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
