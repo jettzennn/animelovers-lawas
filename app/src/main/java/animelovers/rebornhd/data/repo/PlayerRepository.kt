@@ -25,7 +25,7 @@ import kotlin.coroutines.cancellation.CancellationException
  *    a. Track berlabel "Indonesian" dari getSources (native) → pakai
  *       langsung HANYA bila isinya terverifikasi Indonesia (port
  *       `server/src/lib/native-track.js`: VTT valid, ≥5 cue, ≥3 penanda
- *       Bahasa Indonesia di 3000 karakter pertama). Bila tidak
+ *       BERBEDA Bahasa Indonesia di 3000 karakter pertama). Bila tidak
  *       terverifikasi → anggap tidak ada track native (fail-closed).
  *    b. Bila tidak ada dan backend ada → GET /subtitle/id (translate + cache).
  *    c. Bila backend tidak ada/tidak terjangkau → VTT Inggris langsung.
@@ -101,8 +101,12 @@ class PlayerRepository(
     // + `server/src/lib/translate.js` (looksIndonesian) +
     // `server/src/lib/vtt.js` (parseVtt). Kriteria sama persis:
     // VTT valid, ≥5 cue, dan 3000 karakter pertama mengandung ≥3 penanda
-    // Bahasa Indonesia. Gagal unduh (mis. 403) / timeout / isi tidak
-    // valid semuanya berarti "tidak terverifikasi" (fail-closed).
+    // BERBEDA Bahasa Indonesia. Penanda yang sama berulang hanya
+    // dihitung sekali — nama tokoh dalam dialog Inggris ("Dan", "Yang")
+    // bisa muncul berkali-kali, dan bila dihitung total, VTT Inggris
+    // lolos sebagai Indonesia (temuan Pentest T18 M1). Gagal unduh
+    // (mis. 403) / timeout / isi tidak valid semuanya berarti
+    // "tidak terverifikasi" (fail-closed).
 
     private val indonesianMarkerRe = Regex(
         "\\b(yang|dan|adalah|sebuah|ketika|dengan|untuk|dalam|seorang|mereka|tersebut|sehingga|namun|karena|kemudian)\\b",
@@ -113,8 +117,10 @@ class PlayerRepository(
         "^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2}\\.\\d{3}|\\d{2}:\\d{2}\\.\\d{3})(?:\\s+.*)?$"
     )
 
+    // Hitung penanda BERBEDA, bukan total kemunculan (lihat komentar
+    // di atas: nama tokoh "Dan"/"Yang" yang berulang hanya 1 penanda).
     private fun looksIndonesian(text: String): Boolean =
-        indonesianMarkerRe.findAll(text).count() >= 3
+        indonesianMarkerRe.findAll(text).map { it.value.lowercase() }.toSet().size >= 3
 
     /** Hitung cue valid (port `vtt.parseVtt` — 0 bila bukan VTT valid). */
     private fun countCues(vttText: String): Int {

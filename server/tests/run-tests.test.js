@@ -141,6 +141,24 @@ test('translate: looksIndonesian membedakan Indonesia vs Inggris', () => {
   assert.equal(translate.looksIndonesian('Good morning everyone, this is the first day of the case.'), false);
 });
 
+// Temuan Pentest T18 M1: "dan"/"yang" juga nama orang dalam dialog
+// Inggris — satu nama yang diulang tidak boleh lolos. Yang dihitung
+// adalah penanda BERBEDA (≥3), bukan total kemunculan.
+test('translate: looksIndonesian menolak nama tokoh Dan/Yang yang diulang (Pentest T18 M1)', () => {
+  // Satu nama diulang 6x = 1 penanda berbeda -> tolak.
+  assert.equal(translate.looksIndonesian('Dan, come here. Dan, listen to me. Dan, look at this. Dan, hurry up. Dan, wait for me. Dan, are you ready?'), false);
+  assert.equal(translate.looksIndonesian('Yang, come here. Yang, listen to me. Yang, look at this. Yang, hurry up. Yang, wait for me. Yang, are you ready?'), false);
+  // Dua nama dicampur, diulang berkali-kali = 2 penanda berbeda -> tolak.
+  assert.equal(translate.looksIndonesian('Dan and Yang went to the market. Dan asked Yang about the plan. Yang told Dan to wait. Dan and Yang left together. Dan called Yang again. Yang answered Dan at once.'), false);
+  // Batas: tepat 2 penanda berbeda yang diulang -> tolak.
+  assert.equal(translate.looksIndonesian('Yang dan yang dan yang dan yang dan yang dan yang.'), false);
+  // Batas: tepat 3 penanda berbeda -> terima.
+  assert.equal(translate.looksIndonesian('Mereka datang dengan membawa kabar yang penting.'), true);
+  // Indonesia asli dengan penanda yang sama diulang tetap diterima
+  // selama ada >=3 penanda berbeda.
+  assert.equal(translate.looksIndonesian('Yang datang dan yang pergi, mereka yang tinggal dengan sabar ketika hujan turun.'), true);
+});
+
 test('translate: translateCues sejajar dengan fetch mock (bentuk B)', async () => {
   const mockFetch = async (url) => {
     const q = decodeURIComponent(url.split('q=')[1]);
@@ -263,12 +281,45 @@ const EN_CUES = [
   'But this journey will not be easy.',
 ];
 
+// Temuan Pentest T18 M1: VTT Inggris yang tokohnya bernama Dan/Yang.
+const DAN_CUES = [
+  'Dan, come here right now.',
+  'Dan, did you hear what he said?',
+  'I told Dan about the plan yesterday.',
+  'Dan, look at this map carefully.',
+  'Where is Dan? He was here a minute ago.',
+  'Dan, we have to leave before dawn.',
+];
+
+const YANG_CUES = DAN_CUES.map((t) => t.replaceAll('Dan', 'Yang'));
+
+// Dua nama tokoh dicampur (2 penanda berbeda, 6 kemunculan).
+const DAN_YANG_CUES = [
+  'Dan, come here right now.',
+  'Yang, did you hear what he said?',
+  'I told Dan and Yang about the plan.',
+  'Dan, look at this map carefully.',
+  'Where is Yang? She was here a minute ago.',
+  'Dan and Yang, we have to leave before dawn.',
+];
+
 test('native-track: checkIndonesianVtt menerima Indonesia ≥5 cue, menolak Inggris / <5 cue / bukan VTT', () => {
   assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(ID_CUES)), 6);
   assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(EN_CUES)), 0);
   assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(ID_CUES.slice(0, 4))), 0);
   assert.equal(nativeTrack.checkIndonesianVtt('Hello world'), 0);
   assert.equal(nativeTrack.checkIndonesianVtt('WEBVTT\n\n'), 0);
+});
+
+// Temuan Pentest T18 M1: VTT Inggris 6 cue dengan tokoh bernama
+// Dan/Yang sebelumnya DITERIMA (checkIndonesianVtt = 6) karena
+// "dan"/"yang" dihitung per kemunculan — sekarang harus 0, sementara
+// VTT Indonesia asli tetap 6 (tidak ada regresi).
+test('native-track: checkIndonesianVtt menolak VTT Inggris tokoh Dan/Yang (Pentest T18 M1)', () => {
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(DAN_CUES)), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(YANG_CUES)), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(DAN_YANG_CUES)), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(ID_CUES)), 6);
 });
 
 test('native-track: isTrackIndonesian memakai fetch mock (valid / unduh gagal / isi Inggris)', async () => {

@@ -38,7 +38,16 @@ const INDONESIAN_MARKERS = /\b(yang|dan|adalah|sebuah|ketika|dengan|untuk|dalam|
 
 function looksIndonesian(text) {
   const hits = String(text).match(INDONESIAN_MARKERS);
-  return !!hits && hits.length >= 3;
+  if (!hits) return false;
+  // Hitung penanda BERBEDA, bukan total kemunculan (temuan Pentest
+  // T18 M1): "dan"/"yang" juga nama orang dalam dialog Inggris —
+  // satu nama yang diulang puluhan kali tidak boleh lolos sebagai
+  // Bahasa Indonesia. Dari 14 penanda, hanya "dan" dan "yang" yang
+  // bertabrakan dengan Bahasa Inggris, jadi teks Inggris paling
+  // banyak menyumbang 2 penanda berbeda; teks Indonesia asli dalam
+  // 3000 karakter hampir selalu mengandung >=3 penanda berbeda.
+  const distinct = new Set(hits.map((h) => h.toLowerCase()));
+  return distinct.size >= 3;
 }
 
 function sleep(ms) {

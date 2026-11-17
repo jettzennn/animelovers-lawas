@@ -5,8 +5,9 @@
 //   1. /subtitle/id — sebelum memakai track native VidCloud.
 //   2. /resolve — sebelum mengklaim has_indonesian_track.
 // Kriteria (sama persis di keduanya): VTT valid, ≥5 cue, dan 3000
-// karakter pertama mengandung penanda Bahasa Indonesia
-// (translate.looksIndonesian, ≥3 penanda).
+// karakter pertama mengandung ≥3 penanda Bahasa Indonesia yang
+// BERBEDA (translate.looksIndonesian — hitung penanda berbeda,
+// bukan total kemunculan).
 const vtt = require('./vtt');
 const translate = require('./translate');
 
