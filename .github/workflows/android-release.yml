@@ -25,10 +25,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # v4: default packages tidak lagi menyertakan paket legacy `tools`
+      # (dihapus Google ~2026-09-15) — v3 gagal di step ini.
+      # Pasang eksplisit platform + build-tools yang dibutuhkan proyek
+      # (compileSdk 34): v4 default hanya memasang platform-tools.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-        # v4: default packages tidak lagi menyertakan paket legacy `tools`
-        # (dihapus Google ~2026-09-15) — v3 gagal di step ini.
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Decode keystore
         run: |
@@ -41,7 +45,16 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Verify signature
         run: |
