@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Detail — adaptasi activity_detail.xml asli. banner_layout_detail (iklan)
+     DIHAPUS; checkbox "Enable Notification" DIHAPUS (aslinya selalu gone).
+     Overlay kunci Ecchi tetap (desain.md §5.1). -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:background="?attr/bgColor"
+    android:descendantFocusability="blocksDescendants"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <RelativeLayout
+        android:textColor="?attr/textColor"
+        android:id="@+id/atas"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipe_container_det"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="5dp">
+
+            <ScrollView
+                android:id="@+id/ScrollView02"
+                android:scrollbars="none"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.facebook.shimmer.ShimmerFrameLayout
+                    android:id="@+id/shimmer_view_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <RelativeLayout
+                        android:textColor="?attr/textColor"
+                        android:orientation="vertical"
+                        android:background="?attr/bgColor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <ImageView
+                            android:textColor="?attr/textColor"
+                            android:id="@+id/posterDetailView"
+                            android:background="?attr/bgColor"
+                            android:layout_width="match_parent"
+                            android:layout_height="350dp"
+                            android:layout_alignParentTop="true"
+                            android:fadeScrollbars="false"
+                            android:layout_alignParentStart="true" />
+
+                        <RelativeLayout
+                            android:id="@+id/poster_detail2"
+                            android:background="@color/black_overlay"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="5dp"
+                            android:layout_alignBottom="@+id/posterDetailView"
+                            android:layout_alignParentStart="true">
+
+                            <ImageView
+                                android:textColor="?attr/textColor"
+                                android:id="@+id/imageDetThumbView"
+                                android:background="?attr/bgColor"
+                                android:layout_width="100dp"
+                                android:layout_height="130dp"
+                                android:scaleType="fitXY"
+                                android:layout_alignParentTop="true"
+                                android:layout_marginStart="20dp"
+                                android:layout_alignParentStart="true" />
+
+                            <TextView
+                                android:textSize="24sp"
+                                android:textColor="@android:color/white"
+                                android:ellipsize="end"
+                                android:gravity="bottom|left"
+                                android:id="@+id/textViewTitled"
+                                android:paddingLeft="10dp"
+                                android:paddingRight="10dp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:maxLines="2"
+                                android:layout_alignParentTop="true"
+                                android:layout_toEndOf="@+id/imageDetThumbView"
+                                style="@style/AudioFileInfoOverlayText" />
+
+                            <TextView
+                                android:textSize="14sp"
+                                android:textColor="@android:color/white"
+                                android:id="@+id/textViewStatus"
+                                android:paddingLeft="10dp"
+                                android:paddingTop="3dp"
+                                android:paddingRight="10dp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_below="@+id/textViewTitled"
+                                android:layout_centerVertical="true"
+                                android:layout_toEndOf="@+id/imageDetThumbView"
+                                style="@style/AudioFileInfoOverlayText" />
+
+                            <TextView
+                                android:textSize="14sp"
+                                android:textColor="@android:color/white"
+                                android:id="@+id/textViewGenre"
+                                android:paddingLeft="10dp"
+                                android:paddingRight="10dp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_below="@+id/textViewStatus"
+                                android:layout_toEndOf="@+id/imageDetThumbView"
+                                style="@style/AudioFileInfoOverlayText" />
+                        </RelativeLayout>
+
+                        <androidx.cardview.widget.CardView
+                            android:textColor="?attr/textColor"
+                            android:orientation="vertical"
+                            android:id="@+id/carddesc"
+                            android:background="?attr/bgColor"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="5dp"
+                            android:layout_marginTop="5dp"
+                            android:layout_marginRight="5dp"
+                            android:layout_below="@+id/poster_detail2">
+
+                            <RelativeLayout
+                                android:textColor="?attr/textColor"
+                                android:orientation="vertical"
+                                android:background="?attr/bgColor"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content">
+
+                                <TextView
+                                    android:textColor="?attr/textColor"
+                                    android:autoLink="web"
+                                    android:id="@+id/descDetailView"
+                                    android:background="?attr/bgColor"
+                                    android:padding="7dp"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_alignParentTop="true"
+                                    android:layout_centerHorizontal="true" />
+
+                                <androidx.recyclerview.widget.RecyclerView
+                                    android:textColor="?attr/textColor"
+                                    android:id="@+id/recycler_view_history_detail"
+                                    android:background="?attr/bgColor"
+                                    android:padding="3dp"
+                                    android:scrollbars="none"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_below="@+id/descDetailView"
+                                    android:layout_alignParentStart="true" />
+                            </RelativeLayout>
+                        </androidx.cardview.widget.CardView>
+
+                        <androidx.cardview.widget.CardView
+                            android:textColor="?attr/textColor"
+                            android:orientation="vertical"
+                            android:id="@+id/cardepidet"
+                            android:background="?attr/bgColor"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="5dp"
+                            android:layout_marginTop="5dp"
+                            android:layout_marginRight="5dp"
+                            android:layout_marginBottom="5dp"
+                            android:layout_below="@+id/carddesc"
+                            app:cardBackgroundColor="?attr/bgColor">
+
+                            <TextView
+                                android:textSize="16sp"
+                                android:textColor="?attr/textColor"
+                                android:id="@+id/episodeTxt"
+                                android:background="?attr/bgColor"
+                                android:padding="10dp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/episode"
+                                android:layout_alignParentStart="true" />
+
+                            <TextView
+                                android:textSize="16sp"
+                                android:textColor="@android:color/holo_blue_light"
+                                android:layout_gravity="right"
+                                android:id="@+id/lainnyaepisodeTxt"
+                                android:background="?attr/bgColor"
+                                android:padding="10dp"
+                                android:paddingTop="10dp"
+                                android:paddingRight="10dp"
+                                android:visibility="gone"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/lainnya"
+                                android:layout_alignParentEnd="true" />
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:textColor="?attr/textColor"
+                                android:id="@+id/recycle_episodeDetailView"
+                                android:background="?attr/bgColor"
+                                android:padding="3dp"
+                                android:scrollbars="none"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="40dp"
+                                android:layout_alignParentStart="false" />
+                        </androidx.cardview.widget.CardView>
+                    </RelativeLayout>
+                </com.facebook.shimmer.ShimmerFrameLayout>
+            </ScrollView>
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    </RelativeLayout>
+
+    <!-- Overlay kunci Ecchi (desain.md §5.1). Tampil hanya bila genre mengandung
+         "Ecchi" DAN (belum login ATAU toggle Ecchi mati). -->
+    <RelativeLayout
+        android:id="@+id/lock"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/overlays"
+            android:background="@color/locked"
+            android:clickable="true"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ImageView
+            android:id="@+id/unlockimg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            app:srcCompat="@drawable/lock_white" />
+
+        <TextView
+            android:textColor="@color/putih"
+            android:gravity="center"
+            android:id="@+id/unlocknow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="20dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginRight="20dp"
+            android:text="@string/buka_sekarang"
+            android:layout_below="@+id/unlockimg"
+            android:layout_centerHorizontal="true" />
+    </RelativeLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:layout_gravity="end|bottom"
+        android:id="@+id/fab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="35dp"
+        android:src="@drawable/ic_arrow_back_black_24dp"
+        android:layout_alignParentTop="true"
+        android:layout_marginStart="20dp"
+        android:layout_alignParentStart="true"
+        app:backgroundTint="@color/putih"
+        app:fabSize="mini" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fav_button"
+        android:clickable="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="35dp"
+        android:layout_alignParentTop="true"
+        android:layout_marginEnd="20dp"
+        android:layout_alignParentEnd="true"
+        app:backgroundTint="@android:color/white"
+        app:fabSize="mini"
+        app:srcCompat="@drawable/round_favorite_border_black_18dp" />
+</RelativeLayout>

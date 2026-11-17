@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Latar tombol "Keluar" di Pengaturan — pengganti drawable Facebook SDK
+     (com_facebook_button_background) yang tidak ada di v1. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="2dp" />
+    <solid android:color="#1877f2" />
+</shape>

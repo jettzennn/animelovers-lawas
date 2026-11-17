@@ -1,0 +1,1 @@
+{"description":"Backend kecil AnimeLovers Revival: resolve video VidCloud/MegaPlay, subtitle Indonesia progresif + cache, proxy HLS/VTT.","engines":{"node":">=22.5"},"license":"UNLICENSED","main":"server.js","name":"animelovers-lawas-server","private":true,"scripts":{"start":"node server.js","test":"node --test tests/run-tests.test.js"},"type":"commonjs","version":"1.0.0"}

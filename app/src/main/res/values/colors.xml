@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Warna — nilai ASLI dari res/values/colors.xml hasil bedah. -->
+<resources>
+    <color name="colorPrimary">#ffffff</color>
+    <color name="colorPrimaryDark">#2b2a2a</color>
+    <color name="colorAccent">#549bff</color>
+    <color name="black">#000000</color>
+    <color name="putih">#ffffff</color>
+    <color name="darktheme">#2b2a2a</color>
+    <color name="black_overlay">#47000000</color>
+    <color name="locked">#bf070707</color>
+    <color name="cardview_dark_background">#ff424242</color>
+    <color name="cardview_light_background">#ffffffff</color>
+    <!-- Tint ikon hati favorit bila tersimpan (nilai asli dipertahankan). -->
+    <color name="favorite_tint">#33DDFF</color>
+    <!-- Latar adaptive icon launcher (warna dasar kotak biru ikon "new", #0072bc). -->
+    <color name="launcher_background">#0072bc</color>
+</resources>

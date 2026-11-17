@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Item grid Jelajahi / Lainnya — adaptasi layout_browse_recycle.xml asli. -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:orientation="vertical"
+    android:id="@+id/row_latest_layoute"
+    android:background="?attr/bgColor"
+    android:padding="4dp"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <ImageView
+        android:textColor="?attr/textColor"
+        android:id="@+id/posterViewBrows"
+        android:background="?attr/bgColor"
+        android:layout_width="100dp"
+        android:layout_height="150dp"
+        android:scaleType="fitXY"
+        app:srcCompat="@android:color/white" />
+
+    <TextView
+        android:textSize="12sp"
+        android:textColor="@android:color/white"
+        android:ellipsize="end"
+        android:gravity="bottom"
+        android:id="@+id/titleViewBrows"
+        android:background="@android:drawable/screen_background_dark_transparent"
+        android:layout_width="100dp"
+        android:layout_height="wrap_content"
+        android:maxLines="2"
+        android:layout_alignBottom="@+id/posterViewBrows"
+        android:textAlignment="center"
+        android:paddingStart="5dp"
+        android:paddingEnd="5dp"
+        android:layout_alignEnd="@+id/posterViewBrows" />
+
+    <TextView
+        android:textSize="10sp"
+        android:textColor="@color/putih"
+        android:id="@+id/statusText"
+        android:background="@drawable/rounded_corners"
+        android:paddingLeft="2dp"
+        android:paddingRight="2dp"
+        android:visibility="gone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/titleViewBrows"
+        android:layout_alignParentStart="true" />
+
+    <TextView
+        android:textSize="12sp"
+        android:textColor="@color/putih"
+        android:id="@+id/maxepisode"
+        android:background="@drawable/rounded_corners"
+        android:paddingLeft="2dp"
+        android:paddingRight="2dp"
+        android:visibility="gone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_marginEnd="1dp"
+        android:layout_alignEnd="@+id/posterViewBrows" />
+
+    <TextView
+        android:id="@+id/genreTextAll"
+        android:visibility="gone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</RelativeLayout>

@@ -1,0 +1,68 @@
+package animelovers.rebornhd.ui.main
+
+import android.os.Bundle
+import androidx.fragment.app.Fragment
+import androidx.viewpager2.adapter.FragmentStateAdapter
+import animelovers.rebornhd.R
+import animelovers.rebornhd.app
+import animelovers.rebornhd.databinding.ActivityMainBinding
+import animelovers.rebornhd.ui.BaseActivity
+import animelovers.rebornhd.ui.main.browse.BrowseFragment
+import animelovers.rebornhd.ui.main.history.HistoryFragment
+import animelovers.rebornhd.ui.main.home.HomeFragment
+import animelovers.rebornhd.util.toast
+import com.google.android.material.tabs.TabLayoutMediator
+
+/**
+ * Main — 3 tab datar (Beranda / Jelajahi / Riwayat), tanpa drawer/bottom-nav.
+ * ViewPager2 + TabLayout, offscreenPageLimit 10 seperti aslinya (ketiga
+ * fragment selalu hidup). Tekan Back 2× untuk keluar.
+ */
+class MainActivity : BaseActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+    private var lastBackPress = 0L
+
+    /** Gerbang Ecchi terbuka bila sudah login DAN toggle Ecchi aktif. */
+    fun isEcchiUnlocked(): Boolean {
+        val auth = app().authRepository
+        return auth.isSignedIn() && prefs.ecchiEnabled == "1"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.viewpager.adapter = TabsAdapter(this)
+        // Seperti aslinya: semua tab selalu hidup.
+        binding.viewpager.offscreenPageLimit = 10
+        TabLayoutMediator(binding.tabs, binding.viewpager) { tab, position ->
+            tab.text = when (position) {
+                0 -> getString(R.string.tab_beranda)
+                1 -> getString(R.string.tab_jelajahi)
+                else -> getString(R.string.tab_riwayat)
+            }
+        }.attach()
+    }
+
+    override fun onBackPressed() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPress < 2000) {
+            super.onBackPressed()
+        } else {
+            lastBackPress = now
+            toast(getString(R.string.tekan_kembali_lagi))
+        }
+    }
+
+    private inner class TabsAdapter(activity: MainActivity) : FragmentStateAdapter(activity) {
+        override fun getItemCount(): Int = 3
+
+        override fun createFragment(position: Int): Fragment = when (position) {
+            0 -> HomeFragment()
+            1 -> BrowseFragment()
+            else -> HistoryFragment()
+        }
+    }
+}

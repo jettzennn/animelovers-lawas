@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tema — tiruan aslinya (res/values/styles.xml hasil bedah: AppTheme, DarkTheme,
+     LightTheme, DarkAlert, LightAlert, TransparentTheme, FullscreenTheme). -->
+<resources>
+
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="colorControlNormal">@color/black</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <!-- Tema gelap (default — pref theme = "1"). -->
+    <style name="DarkTheme" parent="AppTheme">
+        <item name="bgColor">#2b2a2a</item>
+        <item name="metaTextColor">#aeaeae</item>
+        <item name="textColor">#ffffff</item>
+    </style>
+
+    <!-- Tema terang (pref theme = "0"). -->
+    <style name="LightTheme" parent="AppTheme">
+        <item name="bgColor">#ffffff</item>
+        <item name="metaTextColor">#606060</item>
+        <item name="textColor">#606060</item>
+    </style>
+
+    <style name="AppTheme.TransparentTheme" parent="AppTheme">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Tema player: layar penuh tanpa action bar. -->
+    <style name="FullscreenTheme" parent="AppTheme">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="DarkAlert" parent="Theme.AppCompat.Light.Dialog.Alert">
+        <item name="android:textColorPrimary">#ffffff</item>
+        <item name="android:textColor">@android:color/holo_blue_light</item>
+        <item name="android:background">#2b2a2a</item>
+    </style>
+
+    <style name="LightAlert" parent="Theme.AppCompat.Light.Dialog.Alert">
+        <item name="android:textColorPrimary">#606060</item>
+        <item name="android:textColor">@android:color/holo_blue_light</item>
+        <item name="android:background">#ffffff</item>
+    </style>
+
+    <!-- Style teks overlay di poster (dipakai layout_detail + item_slide). -->
+    <style name="AudioFileInfoOverlayText" parent="">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@android:color/darker_gray</item>
+        <item name="android:paddingLeft">4px</item>
+        <item name="android:paddingTop">4px</item>
+        <item name="android:paddingRight">4px</item>
+        <item name="android:paddingBottom">4px</item>
+    </style>
+
+    <!-- Tombol standar Media3 di exo_playback_control_view.xml.
+         Drawable exo_icon_* berasal dari library media3-ui. -->
+    <style name="ExoMediaButton" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@null</item>
+    </style>
+
+    <style name="ExoMediaButton.Rewind" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_rewind</item>
+        <item name="android:contentDescription">@string/exo_controls_rewind_description</item>
+    </style>
+
+    <style name="ExoMediaButton.Play" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_play</item>
+        <item name="android:contentDescription">@string/exo_controls_play_description</item>
+    </style>
+
+    <style name="ExoMediaButton.Pause" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_pause</item>
+        <item name="android:contentDescription">@string/exo_controls_pause_description</item>
+    </style>
+
+    <style name="ExoMediaButton.FastForward" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_fastforward</item>
+        <item name="android:contentDescription">@string/exo_controls_fastforward_description</item>
+    </style>
+
+    <style name="ExoMediaButton.Next" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_next</item>
+        <item name="android:contentDescription">@string/exo_controls_next_description</item>
+    </style>
+
+    <style name="ExoMediaButton.Previous" parent="ExoMediaButton">
+        <item name="android:src">@drawable/exo_icon_previous</item>
+        <item name="android:contentDescription">@string/exo_controls_previous_description</item>
+    </style>
+</resources>

@@ -1,0 +1,22 @@
+# Android
+*.iml
+.gradle/
+local.properties
+**/build/
+**/generated/
+**/*.apk
+**/*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Keystore + kredensial — JANGAN PERNAH di-commit.
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+
+# IDE
+.idea/
+*.DS_Store

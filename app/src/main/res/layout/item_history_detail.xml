@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Item "Lanjutkan" di Detail — adaptasi layout_history_detail_recycle.xml asli. -->
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:orientation="horizontal"
+    android:background="?attr/bgColor"
+    android:padding="10dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp"
+    app:cardCornerRadius="2dp">
+
+    <RelativeLayout
+        android:textColor="?attr/textColor"
+        android:orientation="vertical"
+        android:id="@+id/row_history_layout_det"
+        android:background="?attr/bgColor"
+        android:padding="4dp"
+        android:layout_width="match_parent"
+        android:layout_height="135dp">
+
+        <ImageView
+            android:textColor="?attr/textColor"
+            android:id="@+id/posterhistorydetView"
+            android:background="?attr/bgColor"
+            android:layout_width="100dp"
+            android:layout_height="130dp"
+            android:scaleType="fitXY" />
+
+        <TextView
+            android:textSize="36sp"
+            android:textColor="?attr/textColor"
+            android:ellipsize="end"
+            android:id="@+id/episodehistorydetView"
+            android:background="?attr/bgColor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:layout_below="@+id/textViewLanjut"
+            android:textAlignment="textStart"
+            android:layout_alignStart="@+id/textViewLanjut" />
+
+        <TextView
+            android:textSize="14sp"
+            android:textColor="?attr/textColor"
+            android:ellipsize="end"
+            android:gravity="start|bottom"
+            android:id="@+id/timehistorydetView"
+            android:background="?attr/bgColor"
+            android:paddingTop="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:layout_below="@+id/episodehistorydetView"
+            android:layout_alignStart="@+id/episodehistorydetView" />
+
+        <TextView
+            android:textSize="18sp"
+            android:textColor="?attr/textColor"
+            android:id="@+id/textViewLanjut"
+            android:background="?attr/bgColor"
+            android:layout_width="161dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/lanjutkan"
+            android:layout_alignParentTop="true"
+            android:layout_marginStart="110dp" />
+    </RelativeLayout>
+</androidx.cardview.widget.CardView>

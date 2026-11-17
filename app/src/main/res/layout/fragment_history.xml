@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Riwayat — adaptasi fragment_fav.xml asli. Blok Request DIHAPUS (PRD §12 poin 7).
+     Seksi Favorit [BARU] tampil sebagai header RecyclerView (ConcatAdapter). -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:id="@+id/relativeLayout6"
+    android:background="?attr/bgColor"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:textColor="?attr/textColor"
+        android:id="@+id/constraintLayout"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:elevation="5dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:textColor="?attr/textColor"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:id="@+id/linearLayout2"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="15dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/setting_icon"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/setting_icon"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true" />
+
+            <TextView
+                android:textSize="12sp"
+                android:textColor="?attr/textColor"
+                android:id="@+id/settingText"
+                android:background="?attr/bgColor"
+                android:visibility="visible"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/pengaturan"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:textColor="?attr/textColor"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:id="@+id/download_tab"
+            android:background="?attr/bgColor"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:visibility="visible"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="15dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:textColor="?attr/textColor"
+                android:id="@+id/downloadimghistory"
+                android:background="?attr/bgColor"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/download_new"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentStart="true" />
+
+            <TextView
+                android:textSize="12sp"
+                android:textColor="?attr/textColor"
+                android:id="@+id/downloadtexthistory"
+                android:background="?attr/bgColor"
+                android:visibility="visible"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/unduhan"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentStart="true" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:textColor="?attr/textColor"
+        android:id="@+id/constraintLayout3"
+        android:background="?attr/bgColor"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/constraintLayout">
+
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:textColor="?attr/textColor"
+            android:id="@+id/swipe_container_fav"
+            android:background="?attr/bgColor"
+            android:visibility="visible"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginStart="5dp"
+            android:layout_marginEnd="5dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:textColor="?attr/textColor"
+                android:id="@+id/recycler_view_history"
+                android:background="?attr/bgColor"
+                android:scrollbars="none"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_alignParentStart="true" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        <TextView
+            android:id="@+id/empty_history"
+            android:textSize="16sp"
+            android:textColor="?attr/metaTextColor"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/belum_ada_riwayat"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

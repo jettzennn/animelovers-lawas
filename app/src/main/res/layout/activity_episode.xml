@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Semua episode — adaptasi activity_episode_lainnya.xml asli.
+     banner_layout_episode_lainnya (iklan) DIHAPUS. -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:background="?attr/bgColor"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.appcompat.widget.Toolbar
+        android:textColor="?attr/textColor"
+        android:id="@+id/toolbar_episode_lainnya"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="35dp" />
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:textColor="?attr/textColor"
+        android:id="@+id/swipe_containereeee"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/toolbar_episode_lainnya"
+        android:layout_alignParentStart="true">
+
+        <RelativeLayout
+            android:textColor="?attr/textColor"
+            android:orientation="vertical"
+            android:id="@+id/relativeswipe_lainnyaa"
+            android:background="?attr/bgColor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.cardview.widget.CardView
+                android:textColor="?attr/textColor"
+                android:orientation="vertical"
+                android:background="?attr/bgColor"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginTop="7dp"
+                android:layout_marginBottom="7dp"
+                android:layout_marginStart="7dp"
+                android:layout_marginEnd="7dp"
+                app:cardBackgroundColor="?attr/bgColor">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:textColor="?attr/textColor"
+                    android:id="@+id/recycler_episode_lainnya"
+                    android:background="?attr/bgColor"
+                    android:padding="3dp"
+                    android:paddingTop="5dp"
+                    android:scrollbars="none"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true" />
+            </androidx.cardview.widget.CardView>
+        </RelativeLayout>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</RelativeLayout>

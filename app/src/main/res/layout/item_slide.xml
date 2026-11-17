@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Item slider Beranda — adaptasi layout_slide_view.xml asli. -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_gravity="bottom|center_horizontal"
+        android:id="@+id/slideImage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true" />
+
+    <TextView
+        android:textSize="16sp"
+        android:textColor="@android:color/white"
+        android:gravity="center"
+        android:layout_gravity="center_vertical"
+        android:id="@+id/slideNameTXT"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:layout_alignBottom="@+id/slideImage"
+        android:layout_centerHorizontal="true"
+        android:textAlignment="center"
+        style="@style/AudioFileInfoOverlayText" />
+</RelativeLayout>

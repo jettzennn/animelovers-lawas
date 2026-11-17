@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sel grid episode — adaptasi layout_video_recycle.xml asli.
+     Chip putih + teks abu-abu, seperti aslinya. -->
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="horizontal"
+    android:padding="10dp"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp"
+    app:cardCornerRadius="2dp">
+
+    <RelativeLayout
+        android:orientation="vertical"
+        android:id="@+id/row_latest_layout"
+        android:background="@android:color/white"
+        android:padding="4dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:textColor="@android:color/darker_gray"
+            android:gravity="bottom"
+            android:id="@+id/idtitlePlay"
+            android:background="@android:color/white"
+            android:visibility="visible"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:textAlignment="center" />
+    </RelativeLayout>
+</androidx.cardview.widget.CardView>

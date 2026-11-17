@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- String UI — FULL Bahasa Indonesia. TIDAK ADA teks versi di mana pun.
+     Aslinya hampir semua teks di-hardcode; revival WAJIB memakai strings.xml. -->
+<resources>
+
+    <!-- Nama aplikasi — sama seperti aslinya, tanpa embel-embel versi. -->
+    <string name="app_name">AnimLovers</string>
+
+    <!-- Tab Main -->
+    <string name="tab_beranda">Beranda</string>
+    <string name="tab_jelajahi">Jelajahi</string>
+    <string name="tab_riwayat">Riwayat</string>
+
+    <!-- Beranda -->
+    <string name="episode_baru">Episode Baru</string>
+    <string name="terlaris">Terlaris</string>
+    <string name="lainnya">Lainnya</string>
+    <string name="info">Info</string>
+    <string name="info_mimin">Info Mimin</string>
+    <string name="ok">OK</string>
+
+    <!-- Jelajahi -->
+    <string name="cari">Cari</string>
+    <string name="cari_anime">Cari anime</string>
+    <string name="semua">Semua</string>
+    <string name="semua_genre">Semua Genre</string>
+    <string name="tidak_ditemukan">Tidak ditemukan</string>
+    <string name="gagal_memuat">Gagal memuat. Tarik ke bawah untuk mencoba lagi.</string>
+    <string name="tidak_ada_koneksi">Tidak ada koneksi internet</string>
+
+    <!-- Riwayat -->
+    <string name="pengaturan">Pengaturan</string>
+    <string name="unduhan">Unduhan</string>
+    <string name="favorit">Favorit</string>
+    <string name="favorit_ditambahkan">Ditambahkan ke favorit</string>
+    <string name="favorit_dihapus">Dihapus dari favorit</string>
+    <string name="belum_ada_riwayat">Belum ada riwayat</string>
+
+    <!-- Detail -->
+    <string name="episode">Episode</string>
+    <string name="lanjutkan">Lanjutkan</string>
+    <string name="status_format">Status : %1$s  Rating : %2$s</string>
+    <string name="genre_format">Genre : %1$s</string>
+    <string name="belum_ada_episode">Belum ada episode</string>
+    <string name="episode_label">Episode %1$d</string>
+
+    <!-- Gerbang Ecchi (overlay kunci) -->
+    <string name="buka_sekarang">Buka Sekarang</string>
+    <string name="ecchi_perlu_login">Login dahulu untuk akses genre Ecchi.</string>
+    <string name="ecchi_belum_aktif">Genre Ecchi di menu Pengaturan belum diaktifkan. Aktifkan genre Ecchi terlebih dahulu lalu simpan.</string>
+
+    <!-- Player -->
+    <string name="putar_otomatis">Putar\nOtomatis</string>
+    <string name="putar_sekali">Putar\nSekali</string>
+    <string name="layar_auto">Layar\nAuto</string>
+    <string name="layar_penuh">Layar\nPenuh</string>
+    <string name="volume">Volume</string>
+    <string name="film">Film</string>
+    <string name="kualitas_hd">HD</string>
+    <string name="kualitas_sd">SD</string>
+    <string name="gagal_memutar">Gagal memutar Episode %1$d</string>
+    <string name="subtitle_indonesia_belum_tersedia">Subtitle Indonesia belum tersedia — menampilkan Inggris</string>
+
+    <!-- Dialog pilih mode (tap episode) -->
+    <string name="pilih_mode">Silakan pilih salah satu mode</string>
+    <string name="unduh">Unduh</string>
+    <string name="streaming">Streaming</string>
+    <string name="batal">Batal</string>
+
+    <!-- Dialog gerbang WiFi -->
+    <string name="data_seluler_judul">Data seluler</string>
+    <string name="data_seluler_isi">Anda menggunakan data seluler. Streaming video memakai data besar, sebaiknya pakai WiFi. Lanjut?</string>
+    <string name="lanjut">Lanjut</string>
+    <string name="tidak">Tidak</string>
+    <string name="wifi_terputus_judul">Koneksi WiFi terputus</string>
+    <string name="wifi_terputus_isi">Yakin lanjut memakai koneksi data seluler?</string>
+
+    <!-- Unduhan -->
+    <string name="unduhan_dimulai">Unduhan dimulai</string>
+    <string name="unduhan_gagal">Unduhan gagal dimulai</string>
+
+    <!-- Pengaturan -->
+    <string name="umum">Umum</string>
+    <string name="tema_gelap">Tema gelap</string>
+    <string name="notifikasi_episode_baru">Notifikasi episode baru</string>
+    <string name="notifikasi_koneksi_video">Notifikasi koneksi video</string>
+    <string name="masuk">Masuk</string>
+    <string name="aktifkan_ecchi">Aktifkan Ecchi</string>
+    <string name="keluar">Keluar</string>
+    <string name="simpan">Simpan</string>
+    <string name="beri_rating">Beri Rating</string>
+    <string name="email_placeholder">Email_</string>
+    <string name="login_belum_tersedia">Masuk belum tersedia — proyek Firebase baru belum dipasang.</string>
+    <string name="masuk_facebook">Masuk dengan Facebook</string>
+    <string name="masuk_google">Masuk dengan Google</string>
+    <string name="menu_genre">Genre</string>
+    <string name="menu_tampilan">Tampilan daftar</string>
+    <string name="login_gagal">Masuk gagal. Coba lagi.</string>
+    <string name="sudah_keluar">Kamu sudah keluar.</string>
+
+    <!-- Umum -->
+    <string name="tekan_kembali_lagi">Tekan Kembali lagi untuk keluar</string>
+    <string name="tautan_disalin">Tautan disalin</string>
+
+    <!-- Splash -->
+    <string name="kredit_dev">Dibuat ulang oleh Hadi as Faygo</string>
+    <string name="disclaimer_judul">Disclaimer</string>
+    <string name="terima">Terima</string>
+    <string name="tolak">Tolak</string>
+    <string name="disclaimer_isi">Ini aplikasi tidak resmi (fan-made) yang dibuat ulang oleh penggemar. Semua merek dagang dan hak cipta adalah milik pemiliknya masing-masing. Aplikasi ini tidak bertanggung jawab atas konten yang dihosting pihak ketiga dan tidak terlibat dalam pengunggahan atau pengunduhan — kami hanya menampilkan tautan yang tersedia di internet. Bila ada konten yang menurutmu melanggar hak cipta dan kamu pemegang hak ciptanya, laporkan melalui repo GitHub animelovers-lawas dan konten tersebut akan segera dihapus. Dengan memakai aplikasi ini, kamu menyatakan menerima kebijakan ini. Bila tidak setuju, jangan gunakan aplikasi ini.</string>
+
+    <!-- Dialog pembaruan (cek GitHub Release) -->
+    <string name="pembaruan">Pembaruan</string>
+    <string name="perbarui">Perbarui</string>
+    <string name="nanti">Nanti</string>
+    <string name="pembaruan_tersedia">Versi baru tersedia di GitHub. Perbarui sekarang?</string>
+
+    <!-- Deskripsi tombol player (aksesibilitas) -->
+    <string name="exo_controls_play_description">Putar</string>
+    <string name="exo_controls_pause_description">Jeda</string>
+    <string name="exo_controls_rewind_description">Mundur</string>
+    <string name="exo_controls_fastforward_description">Maju</string>
+    <string name="exo_controls_next_description">Berikutnya</string>
+    <string name="exo_controls_previous_description">Sebelumnya</string>
+
+</resources>

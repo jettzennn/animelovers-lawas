@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Beranda — adaptasi fragment_home.xml asli. AutoScrollViewPager diganti
+     ViewPager2 (auto-scroll diurus HomeFragment). Teks hardcode → @string. -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/relativeLayout5"
+    android:background="#e9ecec"
+    android:descendantFocusability="blocksDescendants"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_container_home"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ScrollView
+            android:scrollbarSize="0dp"
+            android:textColor="?attr/textColor"
+            android:id="@+id/ScrollView01"
+            android:background="?attr/bgColor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <RelativeLayout
+                android:textColor="?attr/textColor"
+                android:orientation="vertical"
+                android:id="@+id/layout_slider"
+                android:background="?attr/bgColor"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.cardview.widget.CardView
+                    android:orientation="vertical"
+                    android:id="@+id/slide_layoutatas"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginStart="5dp"
+                    android:layout_marginEnd="5dp">
+
+                    <RelativeLayout
+                        android:orientation="vertical"
+                        android:background="?attr/bgColor"
+                        android:layout_width="match_parent"
+                        android:layout_height="260dp">
+
+                        <androidx.viewpager2.widget.ViewPager2
+                            android:id="@+id/simpleAdapterViewFlipper"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_centerInParent="true"
+                            android:foregroundGravity="top" />
+
+                    </RelativeLayout>
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:orientation="vertical"
+                    android:id="@+id/layout_info"
+                    android:background="?attr/bgColor"
+                    android:visibility="visible"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="5dp"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginRight="5dp"
+                    android:layout_below="@+id/slide_layoutatas"
+                    app:cardBackgroundColor="?attr/bgColor">
+
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="@android:color/darker_gray"
+                        android:id="@+id/info_text"
+                        android:background="?attr/bgColor"
+                        android:padding="5dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/info"
+                        android:paddingStart="10dp"
+                        android:layout_alignParentStart="true" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_info"
+                        android:background="?attr/bgColor"
+                        android:padding="3dp"
+                        android:scrollbars="none"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginTop="30dp"
+                        android:layout_marginBottom="5dp"
+                        android:layout_alignParentStart="true" />
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:orientation="vertical"
+                    android:id="@+id/layout_update"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="5dp"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginRight="5dp"
+                    android:layout_below="@+id/layout_info"
+                    app:cardBackgroundColor="?attr/bgColor">
+
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="@android:color/darker_gray"
+                        android:id="@+id/updateTxt"
+                        android:background="?attr/bgColor"
+                        android:padding="5dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/episode_baru"
+                        android:paddingStart="10dp"
+                        android:layout_alignParentStart="true" />
+
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="@android:color/holo_blue_light"
+                        android:layout_gravity="right"
+                        android:id="@+id/lainnyaupdate"
+                        android:background="?attr/bgColor"
+                        android:padding="5dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/lainnya"
+                        android:paddingEnd="10dp"
+                        android:layout_alignParentEnd="true" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_update"
+                        android:background="?attr/bgColor"
+                        android:padding="3dp"
+                        android:scrollbars="none"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginTop="30dp"
+                        android:layout_marginBottom="5dp"
+                        android:layout_alignParentStart="true" />
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:orientation="vertical"
+                    android:id="@+id/mostview_layoutcard"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="5dp"
+                    android:layout_marginTop="5dp"
+                    android:layout_marginRight="5dp"
+                    android:layout_marginBottom="5dp"
+                    android:layout_below="@+id/layout_update"
+                    app:cardBackgroundColor="?attr/bgColor">
+
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="@android:color/darker_gray"
+                        android:id="@+id/MostviewTxt"
+                        android:background="?attr/bgColor"
+                        android:padding="5dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/terlaris"
+                        android:paddingStart="10dp"
+                        android:layout_alignParentStart="true" />
+
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="@android:color/holo_blue_light"
+                        android:layout_gravity="right"
+                        android:id="@+id/lainnyamostview"
+                        android:background="?attr/bgColor"
+                        android:padding="5dp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/lainnya"
+                        android:paddingEnd="10dp"
+                        android:layout_alignParentEnd="true" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recycler_view_mostview"
+                        android:background="?attr/bgColor"
+                        android:padding="3dp"
+                        android:scrollbars="none"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginTop="30dp"
+                        android:layout_marginBottom="5dp"
+                        android:layout_alignParentStart="true" />
+                </androidx.cardview.widget.CardView>
+
+            </RelativeLayout>
+        </ScrollView>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

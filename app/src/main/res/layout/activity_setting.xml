@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pengaturan — adaptasi activity_setting.xml asli.
+     DIHAPUS: seksi Manajer Unduhan (ADM), switch_chat, exp_switch,
+     notif_switch_chat, admin_silent (semua gone di aslinya).
+     Tombol login FB/Google asli adalah widget SDK Facebook/Google — v1 memakai
+     Button biasa (id tetap) karena SDK itu belum dipasang (lihat docs/firebase-setup.md). -->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textColor="?attr/textColor"
+    android:id="@+id/relativeLayout4"
+    android:background="?attr/bgColor"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.appcompat.widget.Toolbar
+        android:textColor="?attr/textColor"
+        android:id="@+id/toolbar_setting"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ScrollView
+        android:textColor="?attr/textColor"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        app:layout_constraintBottom_toTopOf="@+id/linearLayout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/toolbar_setting">
+
+        <LinearLayout
+            android:textColor="?attr/textColor"
+            android:orientation="vertical"
+            android:background="?attr/bgColor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:textColor="?attr/textColor"
+                android:orientation="vertical"
+                android:background="?attr/bgColor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <TextView
+                    android:textColor="?attr/textColor"
+                    android:id="@+id/Main_menu_txt"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/umum"
+                    android:layout_marginStart="10dp" />
+
+                <LinearLayout
+                    android:textColor="?attr/textColor"
+                    android:orientation="vertical"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="30dp"
+                    android:layout_marginEnd="30dp">
+
+                    <Switch
+                        android:textSize="16sp"
+                        android:textColor="?attr/textColor"
+                        android:id="@+id/theme_switch"
+                        android:background="?attr/bgColor"
+                        android:paddingTop="20px"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/tema_gelap" />
+
+                    <Switch
+                        android:textSize="16sp"
+                        android:textColor="?attr/textColor"
+                        android:id="@+id/notif_switch"
+                        android:background="?attr/bgColor"
+                        android:paddingTop="20px"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/notifikasi_episode_baru" />
+
+                    <Switch
+                        android:textSize="16sp"
+                        android:textColor="?attr/textColor"
+                        android:id="@+id/wifi_switch"
+                        android:background="?attr/bgColor"
+                        android:paddingTop="20px"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/notifikasi_koneksi_video" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <View
+                android:textColor="?attr/textColor"
+                android:background="?attr/bgColor"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp" />
+
+            <LinearLayout
+                android:textColor="?attr/textColor"
+                android:orientation="vertical"
+                android:background="?attr/bgColor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <TextView
+                    android:textSize="14sp"
+                    android:textColor="?attr/textColor"
+                    android:id="@+id/textView11"
+                    android:background="?attr/bgColor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/masuk"
+                    android:layout_marginStart="10dp" />
+
+                <LinearLayout
+                    android:textColor="?attr/textColor"
+                    android:orientation="vertical"
+                    android:id="@+id/linear_fb_login"
+                    android:background="?attr/bgColor"
+                    android:paddingTop="20px"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <Button
+                        android:layout_gravity="center_horizontal"
+                        android:id="@+id/login_button"
+                        android:layout_width="230dp"
+                        android:layout_height="50dp"
+                        android:background="@drawable/btn_facebook"
+                        android:text="@string/masuk_facebook"
+                        android:textColor="@android:color/white" />
+
+                    <Button
+                        android:layout_gravity="center_horizontal"
+                        android:id="@+id/login_button_google"
+                        android:layout_width="240dp"
+                        android:layout_height="50dp"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/masuk_google" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:textColor="?attr/textColor"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:id="@+id/liniear_fb_detail"
+                    android:background="?attr/bgColor"
+                    android:paddingTop="20px"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <LinearLayout
+                        android:textColor="?attr/textColor"
+                        android:orientation="horizontal"
+                        android:background="?attr/bgColor"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent">
+
+                        <LinearLayout
+                            android:textColor="?attr/textColor"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:background="?attr/bgColor"
+                            android:layout_width="230dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginLeft="20dp"
+                            android:layout_weight="1">
+
+                            <ImageView
+                                android:textColor="?attr/textColor"
+                                android:id="@+id/photofb"
+                                android:background="?attr/bgColor"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:foregroundGravity="center"
+                                android:src="@drawable/ic_person" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:textColor="?attr/textColor"
+                            android:orientation="vertical"
+                            android:background="?attr/bgColor"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:foregroundGravity="left">
+
+                            <LinearLayout
+                                android:textColor="?attr/textColor"
+                                android:orientation="vertical"
+                                android:background="?attr/bgColor"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp">
+
+                                <TextView
+                                    android:textSize="16sp"
+                                    android:textColor="?attr/textColor"
+                                    android:ellipsize="end"
+                                    android:id="@+id/email_user"
+                                    android:background="?attr/bgColor"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginLeft="20dp"
+                                    android:text="@string/email_placeholder"
+                                    android:maxLines="1" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:textColor="?attr/textColor"
+                                android:orientation="vertical"
+                                android:background="?attr/bgColor"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="5dp"
+                                android:layout_marginEnd="10dp">
+
+                                <TextView
+                                    android:textSize="16sp"
+                                    android:textColor="?attr/textColor"
+                                    android:ellipsize="end"
+                                    android:id="@+id/nama_user"
+                                    android:background="?attr/bgColor"
+                                    android:visibility="gone"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:maxLines="1" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:textColor="?attr/textColor"
+                                android:orientation="vertical"
+                                android:background="?attr/bgColor"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:layout_marginTop="5dp">
+
+                                <Switch
+                                    android:textSize="16sp"
+                                    android:textColor="?attr/textColor"
+                                    android:id="@+id/ecchi_switch"
+                                    android:background="?attr/bgColor"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginLeft="20dp"
+                                    android:layout_marginRight="30dp"
+                                    android:text="@string/aktifkan_ecchi" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:textColor="?attr/textColor"
+                                android:layout_gravity="bottom|right"
+                                android:orientation="vertical"
+                                android:background="?attr/bgColor"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp">
+
+                                <Button
+                                    android:textColor="@android:color/white"
+                                    android:id="@+id/signout_fb"
+                                    android:background="@drawable/btn_facebook"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="30dp"
+                                    android:layout_marginRight="30dp"
+                                    android:text="@string/keluar" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:textColor="?attr/textColor"
+        android:orientation="horizontal"
+        android:id="@+id/linearLayout"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="30dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <TextView
+            android:textSize="18sp"
+            android:textColor="?attr/textColor"
+            android:id="@+id/cancelText"
+            android:background="?attr/bgColor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="30dp"
+            android:text="@string/batal" />
+
+        <TextView
+            android:textSize="18sp"
+            android:textColor="?attr/textColor"
+            android:gravity="center"
+            android:id="@+id/rateus"
+            android:background="?attr/bgColor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/beri_rating"
+            android:layout_weight="1" />
+
+        <TextView
+            android:textSize="18sp"
+            android:textColor="?attr/textColor"
+            android:id="@+id/SaveText"
+            android:background="?attr/bgColor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginRight="30dp"
+            android:text="@string/simpan" />
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

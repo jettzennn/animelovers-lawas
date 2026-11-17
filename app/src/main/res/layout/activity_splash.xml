@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash — adaptasi splash.xml asli. Hanya 3 elemen, posisi sama persis.
+     Teks versi asli ("Versi 2.47") diganti kredit dev (keputusan Faygo). -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/splash_layout"
+    android:background="?attr/bgColor"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:textSize="40sp"
+        android:textColor="?attr/metaTextColor"
+        android:id="@+id/textView"
+        android:background="?attr/bgColor"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="120dp"
+        android:text="@string/app_name"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:textAlignment="gravity" />
+
+    <ImageView
+        android:id="@+id/imageViewSplash"
+        android:layout_width="350dp"
+        android:layout_height="400dp"
+        android:layout_marginBottom="210dp"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
+        android:src="@drawable/splashh"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true" />
+
+    <TextView
+        android:textSize="14sp"
+        android:textColor="?attr/metaTextColor"
+        android:id="@+id/versiontxt"
+        android:background="?attr/bgColor"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="80dp"
+        android:text="@string/kredit_dev"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true" />
+
+</RelativeLayout>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ikon grid (Material "grid view") untuk toggle tampilan Jelajahi. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,11h5V5H4v6zM10,11h5V5h-5v6zM16,11h5V5h-5v6zM4,19h5v-6H4v6zM10,19h5v-6h-5v6zM16,19h5v-6h-5v6z" />
+</vector>
