@@ -10,6 +10,11 @@ Memeriksa:
  5. Setiap activity di AndroidManifest punya kelas Kotlin.
  6. Keseimbangan kurung di file Gradle Kotlin DSL (smoke check).
  7. Layout/menu yang tidak dipakai di mana pun (info saja).
+ 8. Referensi kelas *Activity/*Fragment/*Adapter/*Repository/*Api.
+ 9. prefs.* dan Constants.* merujuk properti yang ada.
+10. Field binding.* cocok dengan id layout.
+11. return@X hanya memakai label penerima lambda yang dikenal
+    (allowlist RETURN_LABEL_ALLOWLIST) — penjaga bug CI v2 run 44081138181.
 
 Keluar 0 bila tidak ada ERROR, 1 bila ada.
 Referensi library (media3-ui) di-allowlist: exo_icon_*.
@@ -276,6 +281,37 @@ for f in kt_files:
     for field in set(binding_field_ref.findall(text)):
         if field not in all_binding_fields:
             errors.append(f"{rel}: binding.{field} tidak cocok dengan id layout mana pun")
+
+# ---------- 11. return@X: label harus nama penerima lambda yang dikenal ----------
+#
+# Pelajaran CI v2 (run 44081138181, commit 66de29a): `return@BrowseFragment`
+# di properti lambda BrowseFragment.kt:86 tidak valid — label itu hanya ada
+# bila lambda dioper LANGSUNG ke fungsi/konstruktor bernama X (mis.
+# `FavoritesHeaderAdapter { ... return@FavoritesHeaderAdapter }`).
+# Lambda yang di-assign ke properti (bukan dioper ke fungsi bernama X)
+# TIDAK punya label itu, dan kotlinc gagal dengan "Unresolved reference".
+# Cek ini menangkap bug kelas itu di verify.py sebelum push, bukan di CI.
+# ATURAN: label baru WAJIB didaftarkan di RETURN_LABEL_ALLOWLIST di bawah.
+RETURN_LABEL_ALLOWLIST = {
+    # fungsi standar Kotlin / coroutine
+    "withContext", "launch",
+    # listener Android
+    "setOnClickListener", "setOnCheckedChangeListener",
+    # konstruktor adapter yang menerima lambda onClick
+    "FavoritesHeaderAdapter", "BrowseGridAdapter",
+}
+return_label_pattern = re.compile(r"return@([A-Za-z][A-Za-z0-9_]*)")
+for f in kt_files:
+    rel = f.relative_to(ROOT)
+    text = strip_kotlin(f.read_text(encoding="utf-8"))
+    for label in set(return_label_pattern.findall(text)):
+        if label not in RETURN_LABEL_ALLOWLIST:
+            errors.append(
+                f"{rel}: return@{label} tidak valid — label '{label}' bukan "
+                f"penerima lambda yang dikenal; daftarkan di "
+                f"RETURN_LABEL_ALLOWLIST bila memang valid, atau perbaiki "
+                f"dengan .let / label lambda"
+            )
 
 # ---------- Laporan ----------
 

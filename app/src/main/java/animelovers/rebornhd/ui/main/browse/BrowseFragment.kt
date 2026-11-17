@@ -83,8 +83,9 @@ class BrowseFragment : Fragment() {
     private var suppressQueryCallback: Boolean = false
 
     private val onAnimeClick: (SankaAnime) -> Unit = { anime ->
-        val slug = anime.slug ?: return@BrowseFragment
-        DetailActivity.start(requireContext(), slug, anime.displayTitle, anime.posterUrl)
+        anime.slug?.let { slug ->
+            DetailActivity.start(requireContext(), slug, anime.displayTitle, anime.posterUrl)
+        }
     }
 
     override fun onCreateView(
