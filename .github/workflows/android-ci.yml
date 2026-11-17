@@ -22,7 +22,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        # v4: default packages tidak lagi menyertakan paket legacy `tools`
+        # (dihapus Google ~2026-09-15) — v3 gagal di step ini.
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
