@@ -16,9 +16,10 @@ android {
         applicationId = "animelovers.rebornhd"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        // Nomor versi HANYA untuk rilis GitHub (tag v1.0.0) — TIDAK tampil di aplikasi.
-        versionName = "1.0.0"
+        // ATURAN TETAP: setiap rilis baru WAJIB menaikkan versionName (sama dengan tag GitHub)
+        // dan versionCode (+1) — halaman Info aplikasi Android menampilkan versionName ini.
+        versionCode = 4
+        versionName = "1.0.3"
     }
 
     buildTypes {
