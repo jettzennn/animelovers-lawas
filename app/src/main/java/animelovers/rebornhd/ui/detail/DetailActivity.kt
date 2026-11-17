@@ -167,8 +167,10 @@ class DetailActivity : BaseActivity() {
             error(R.drawable.splashh)
         }
         binding.textViewTitled.text = animeTitle
-        binding.textViewStatus.text = anime.status
-        binding.textViewGenre.text = anime.genres.joinToString(", ")
+        binding.textViewStatus.text =
+            getString(R.string.status_format, anime.status, anime.rating)
+        binding.textViewGenre.text =
+            getString(R.string.genre_format, anime.genres.joinToString(", "))
         binding.descDetailView.text = HtmlCompat.fromHtml(
             anime.description, HtmlCompat.FROM_HTML_MODE_LEGACY
         )

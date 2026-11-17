@@ -121,7 +121,9 @@ async function getSources(dataId, embedId, fetchImpl) {
 }
 
 // Ambil isi teks (VTT / m3u8) dengan Referer origin MegaPlay.
-async function fetchText(url, fetchImpl) {
+// timeoutMs opsional (default 15000) — /resolve memakai anggaran
+// lebih pendek saat memvalidasi track Indonesia.
+async function fetchText(url, fetchImpl, timeoutMs) {
   let res;
   try {
     res = await fetchWithTimeout(url, {
@@ -129,7 +131,7 @@ async function fetchText(url, fetchImpl) {
         'User-Agent': config.USER_AGENT,
         Referer: config.MEGAPLAY_REFERER,
       },
-    }, 15000, fetchImpl);
+    }, timeoutMs || 15000, fetchImpl);
   } catch (e) {
     throw new MegaPlayError(0, `Unduh MegaPlay gagal (${e.message}).`);
   }

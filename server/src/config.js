@@ -52,6 +52,10 @@ module.exports = {
   TRANSLATE_WORKERS: 4, // pola Sanka: 4 worker paralel
   TRANSLATE_BATCH_GAP_MS: 50,
   TRANSLATE_BATCH_TIMEOUT_MS: 15000,
+  // Validasi track "Indonesian" native di /resolve (fail-closed):
+  // VTT track yang diklaim Indonesia diunduh + diperiksa isinya;
+  // anggaran 5 detik supaya resolve video tidak tertahan lama.
+  NATIVE_TRACK_VALIDATE_TIMEOUT_MS: 5000,
   NEGATIVE_CACHE_TTL_MS: 5 * 60 * 1000,
   // Rate limit per IP (per menit):
   RATE_LIMITS: {

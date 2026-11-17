@@ -40,7 +40,11 @@ import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.isOnWifi
 import animelovers.rebornhd.util.toast
 import coil.load
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Player — adaptasi VideoPlay.java asli (ExoPlayer 2.10.1 → Media3 1.2.1).
@@ -80,6 +84,15 @@ class VideoPlayActivity : BaseActivity() {
     private var episodeNumbers: List<Int> = emptyList()
     private var currentSource: VideoSource? = null
 
+    // Untuk polling subtitle (re-poll tiap ~15 detik bila status partial).
+    private var currentAniId: Int = 0
+    private var currentMegaEmbedId: String? = null
+    private var subtitlePollJob: Job? = null
+    private var lastSubtitleText: String? = null
+
+    // Mode subtitle yang dipilih manual: "id" | "en" | "off".
+    private var subtitleMode: String = "id"
+
     private var isHd: Boolean = false
     private var isFill: Boolean = false
     private var wasPlaying: Boolean = false
@@ -89,6 +102,10 @@ class VideoPlayActivity : BaseActivity() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     companion object {
+        /** Polling subtitle: tiap 15 detik (kontrak server), maks 40×. */
+        private const val SUBTITLE_POLL_INTERVAL_MS = 15_000L
+        private const val MAX_SUBTITLE_POLL_ATTEMPTS = 40
+
         fun start(
             context: Context,
             animeId: String,
@@ -272,7 +289,53 @@ class VideoPlayActivity : BaseActivity() {
             prevEpisode()?.let { loadEpisode(it, showModeDialog = false) }
         }
 
+        // Subtitle manual: Indonesia → English → Mati (jalan keluar bila
+        // subtitle Indonesia belum lengkap / salah — lihat #1).
+        playerView.findViewById<View>(R.id.subtitle_button)?.setOnClickListener {
+            cycleSubtitle()
+        }
+
         loadEpisodeList()
+    }
+
+    /** Siklus tombol subtitle: Indonesia → English → Mati → Indonesia. */
+    private fun cycleSubtitle() {
+        val hasId = currentSource?.subtitleIdUri != null
+        val hasEn = currentSource?.subtitleEnUrl != null
+        subtitleMode = when (subtitleMode) {
+            "id" -> if (hasEn) "en" else "off"
+            "en" -> "off"
+            else -> if (hasId) "id" else "en"
+        }
+        applySubtitleMode()
+        toast(
+            getString(
+                when (subtitleMode) {
+                    "id" -> R.string.subtitle_pilihan_indonesia
+                    "en" -> R.string.subtitle_pilihan_inggris
+                    else -> R.string.subtitle_pilihan_mati
+                }
+            )
+        )
+    }
+
+    private fun applySubtitleMode() {
+        val selector = trackSelector ?: return
+        selector.setParameters(
+            selector.buildUponParameters().apply {
+                when (subtitleMode) {
+                    "id" -> {
+                        setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        setPreferredTextLanguage("id")
+                    }
+                    "en" -> {
+                        setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        setPreferredTextLanguage("en")
+                    }
+                    else -> setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                }
+            }
+        )
     }
 
     private fun setupVolumeSeekBar(playerView: PlayerView) {
@@ -355,11 +418,27 @@ class VideoPlayActivity : BaseActivity() {
             getString(R.string.episode_label, episode)
         updateNextPrevButtons()
         binding.progressBar.visibility = View.VISIBLE
+        // Episode berganti = polling subtitle lama berhenti.
+        subtitlePollJob?.cancel()
+        subtitlePollJob = null
 
         lifecycleScope.launch {
+            // /series sekali jalan: ani_id (fallback mal_id) + episode_embed_id
+            // untuk fallback MegaPlay di backend.
+            val data = try {
+                app().animeRepository.series(animeId)
+            } catch (e: Exception) {
+                null
+            }
+            currentAniId = data?.anime?.vidCloudId ?: animeId.toIntOrNull() ?: 0
+            currentMegaEmbedId = data?.episodes
+                ?.firstOrNull { it.number == episode }
+                ?.episodeEmbedId
+                ?.takeIf { it.isNotBlank() }
             val source = app().playerRepository.resolve(
-                aniId = resolveAniId(),
-                episode = episode
+                aniId = currentAniId,
+                episode = episode,
+                megaEmbedId = currentMegaEmbedId
             )
             binding.progressBar.visibility = View.GONE
             if (source == null) {
@@ -376,16 +455,6 @@ class VideoPlayActivity : BaseActivity() {
         }
     }
 
-    /** ani_id Anikoto (fallback mal_id) — diambil dari /series yang sudah dimuat. */
-    private suspend fun resolveAniId(): Int {
-        return try {
-            val data = app().animeRepository.series(animeId)
-            data?.anime?.vidCloudId ?: animeId.toIntOrNull() ?: 0
-        } catch (e: Exception) {
-            animeId.toIntOrNull() ?: 0
-        }
-    }
-
     private fun showModeDialog(source: VideoSource) {
         AlertDialog.Builder(this, alertTheme())
             .setTitle(R.string.pilih_mode)
@@ -398,6 +467,12 @@ class VideoPlayActivity : BaseActivity() {
 
     private fun downloadSource(source: VideoSource) {
         try {
+            // Sanitasi judul: ':' '/' '?' dll. membuat tujuan DownloadManager
+            // tidak valid ("Re:Zero", "Fate/stay night"). Tujuan mengikuti
+            // PRD §2.1: Downloads/AnimLovers/<Judul>-Ep-<n>.m3u8
+            // (ekstensi .m3u8 — v1 hanya mengunduh playlist, bukan video
+            // offline; sudah disetujui).
+            val safeTitle = animeTitle.replace(Regex("[^a-zA-Z0-9 _.-]"), "_")
             val request = DownloadManager.Request(Uri.parse(source.hlsUrl))
                 .setTitle("$animeTitle - ${getString(R.string.episode_label, episode)}")
                 .setDescription(getString(R.string.unduh))
@@ -406,7 +481,7 @@ class VideoPlayActivity : BaseActivity() {
                 )
                 .setDestinationInExternalPublicDir(
                     Environment.DIRECTORY_DOWNLOADS,
-                    "$animeTitle - Episode $episode.m3u8"
+                    "AnimLovers/$safeTitle-Ep-$episode.m3u8"
                 )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 request.setAllowedNetworkTypes(
@@ -425,6 +500,46 @@ class VideoPlayActivity : BaseActivity() {
 
     private fun startPlayback(source: VideoSource) {
         val exoPlayer = player ?: return
+        // Mode subtitle awal mengikuti track yang tersedia.
+        subtitleMode = if (source.subtitleIdUri != null) "id" else "en"
+        // Isi subtitle yang SUDAH dimuat (file lokal) — polling hanya
+        // memuat ulang bila isi bertambah dari titik ini.
+        lastSubtitleText = try {
+            source.subtitleIdUri?.path
+                ?.let { java.io.File(it) }
+                ?.takeIf { it.exists() }
+                ?.readText()
+        } catch (e: Exception) {
+            null
+        }
+        // Tombol subtitle hanya tampil bila ada track subtitle.
+        binding.exoPlayerView.findViewById<View>(R.id.subtitle_button)?.visibility =
+            if (source.subtitleIdUri != null || source.subtitleEnUrl != null) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        lifecycleScope.launch {
+            val resumePosition = resumePositionFor(episode)
+            exoPlayer.setMediaItem(buildMediaItem(source))
+            if (resumePosition > 0) {
+                exoPlayer.seekTo(resumePosition)
+            }
+            exoPlayer.prepare()
+            exoPlayer.play()
+            if (source.subtitleIdUri == null && source.subtitleEnUrl != null) {
+                toast(getString(R.string.subtitle_indonesia_belum_tersedia))
+            }
+            // Subtitle translate masih sebagian → minta ulang tiap ~15 detik
+            // sampai complete (kontrak server; lihat #1).
+            if (source.subtitleIdStatus == "partial") {
+                startSubtitlePolling()
+            }
+        }
+    }
+
+    /** MediaItem video + track subtitle (Indonesia + Inggris). */
+    private fun buildMediaItem(source: VideoSource): MediaItem {
         val subtitleConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
         if (source.subtitleIdUri != null) {
             subtitleConfigs.add(
@@ -445,24 +560,57 @@ class VideoPlayActivity : BaseActivity() {
                     .build()
             )
         }
-        val mediaItem = MediaItem.Builder()
+        return MediaItem.Builder()
             .setUri(source.hlsUrl)
             .setMimeType(MimeTypes.APPLICATION_M3U8)
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
+    }
 
-        lifecycleScope.launch {
-            val resumePosition = resumePositionFor(episode)
-            exoPlayer.setMediaItem(mediaItem)
-            if (resumePosition > 0) {
-                exoPlayer.seekTo(resumePosition)
-            }
-            exoPlayer.prepare()
-            exoPlayer.play()
-            if (source.subtitleIdUri == null && source.subtitleEnUrl != null) {
-                toast(getString(R.string.subtitle_indonesia_belum_tersedia))
+    /**
+     * Polling subtitle Indonesia (maks 40× ≈ 10 menit — lebih dari cukup:
+     * backend menyelesaikan translate ~25 detik menurut uji live).
+     * Tiap putaran: ambil ulang VTT dari backend; bila isinya bertambah,
+     * muat ulang track subtitle ke player yang sedang jalan (posisi
+     * dipulihkan). Berhenti bila status complete / episode berganti /
+     * Activity dihancurkan.
+     */
+    private fun startSubtitlePolling() {
+        subtitlePollJob?.cancel()
+        subtitlePollJob = lifecycleScope.launch {
+            var attempts = 0
+            while (isActive && attempts < MAX_SUBTITLE_POLL_ATTEMPTS) {
+                attempts++
+                delay(SUBTITLE_POLL_INTERVAL_MS)
+                if (!isActive) break
+                val fetched = try {
+                    app().playerRepository.fetchSubtitleId(
+                        currentAniId, episode, currentMegaEmbedId
+                    )
+                } catch (e: CancellationException) {
+                    break
+                } catch (e: Exception) {
+                    null
+                } ?: continue
+                // Isi bertambah → muat ulang track subtitle.
+                if (fetched.vttText != lastSubtitleText) {
+                    lastSubtitleText = fetched.vttText
+                    reloadSubtitleTrack()
+                }
+                if (fetched.status == "complete") break
             }
         }
+    }
+
+    /** Ganti media item dengan file subtitle terbaru, posisi tetap. */
+    private fun reloadSubtitleTrack() {
+        val exoPlayer = player ?: return
+        val source = currentSource ?: return
+        if (exoPlayer.currentMediaItemIndex != 0) return
+        val position = exoPlayer.currentPosition
+        exoPlayer.replaceMediaItem(0, buildMediaItem(source))
+        exoPlayer.seekTo(position)
+        exoPlayer.play()
     }
 
     private suspend fun resumePositionFor(episodeNumber: Int): Long {
@@ -476,8 +624,15 @@ class VideoPlayActivity : BaseActivity() {
 
     private fun onPlaybackEnded() {
         if (prefs.teruskan == "true") {
-            nextEpisode()?.let { loadEpisode(it, showModeDialog = false) }
+            val next = nextEpisode()
+            if (next != null) {
+                loadEpisode(next, showModeDialog = false)
+                return
+            }
         }
+        // Mode Putar Sekali / film / episode terakhir → keluar player
+        // (PRD §6.4). Tanpa ini player diam di frame akhir.
+        saveAndFinish()
     }
 
     // ---- Gerbang WiFi ----
@@ -541,6 +696,8 @@ class VideoPlayActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        subtitlePollJob?.cancel()
+        subtitlePollJob = null
         networkCallback?.let { callback ->
             val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             runCatching { cm.unregisterNetworkCallback(callback) }

@@ -75,6 +75,14 @@ class SettingActivity : BaseActivity() {
             pendingWifi = isChecked
         }
         binding.ecchiSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !app().authRepository.isSignedIn()) {
+                // Belum login: kembalikan posisi switch + beri tahu
+                // (gerbang tetap aman — saveAndFinish juga membuangnya).
+                binding.ecchiSwitch.isChecked = false
+                pendingEcchi = false
+                toast(getString(R.string.ecchi_perlu_login))
+                return@setOnCheckedChangeListener
+            }
             pendingEcchi = isChecked
         }
 

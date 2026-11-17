@@ -263,6 +263,11 @@ proxy, validasi param, simpan/baca SQLite.
   ~15 detik sampai `complete`.
 - Bila `/resolve` mengembalikan `has_indonesian_track: true`,
   subtitle native tersedia — tapi tetap minta lewat `/subtitle/id`
-  (backend yang memeriksa + memvalidasi isinya).
+  (backend yang memeriksa + memvalidasi isinya). `/resolve` hanya
+  mengklaim track Indonesia bila isi VTT-nya terverifikasi Indonesia
+  (VTT valid, ≥5 cue, penanda bahasa); bila tidak terverifikasi
+  (VTT 403/timeout/isi bukan Indonesia), track tidak dicantumkan
+  dan `has_indonesian_track: false` — Frontend jatuh ke
+  `/subtitle/id` (translate + cache) seperti biasa.
 - Untuk MegaPlay fallback, Frontend harus mengirim
   `mega_embed_id` (dari Anikoto `episodes[].episode_embed_id`).

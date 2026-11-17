@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * VidCloud — sumber video + subtitle Inggris UTAMA (terverifikasi live, Riset T1).
@@ -69,6 +70,25 @@ class VidCloudApi(
         }
         return null
     }
+
+    /**
+     * Ambil teks mentah dari URL (mis. file VTT) — null bila gagal.
+     * Dipakai validasi track "Indonesian" native (lihat PlayerRepository).
+     */
+    suspend fun fetchText(url: String): String? =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(url).get().build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
+                    response.body?.string()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }
 
     /** base64url (tambah padding bila hilang) → XOR → String JSON. */
     internal fun decodeXor(data: String): String? {

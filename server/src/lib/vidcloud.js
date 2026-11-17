@@ -88,12 +88,14 @@ function findTrack(payload, label) {
 // Ambil isi teks dari URL (VTT / m3u8). Jangan dipakai untuk URL
 // yang mengandung token bila hasilnya akan dicatat — pemanggil yang
 // bertanggung jawab tidak mencatat URL-nya.
-async function fetchText(url, fetchImpl) {
+// timeoutMs opsional (default 15000) — /resolve memakai anggaran
+// lebih pendek saat memvalidasi track Indonesia.
+async function fetchText(url, fetchImpl, timeoutMs) {
   let res;
   try {
     res = await fetchWithTimeout(url, {
       headers: { 'User-Agent': config.USER_AGENT },
-    }, 15000, fetchImpl);
+    }, timeoutMs || 15000, fetchImpl);
   } catch (e) {
     throw new VidCloudError(0, `Unduh gagal (${e.message}).`);
   }

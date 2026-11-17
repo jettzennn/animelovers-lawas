@@ -6,18 +6,35 @@
 //     MegaPlay (embed → data-id → getSources → dekripsi enc).
 //  3. Bila semua gagal → 502 dengan pesan Bahasa Indonesia.
 //
+// Track "Indonesian" TIDAK PERNAH diklaim berdasarkan label saja
+// (aturan tetap: jangan pernah menampilkan track berlabel Indonesia
+// yang isinya Inggris). VTT track yang diklaim Indonesia diunduh +
+// divalidasi isinya (helper bersama lib/native-track.js, kriteria
+// sama dengan /subtitle/id: VTT valid, ≥5 cue, penanda Indonesia).
+// Bila tidak terverifikasi (VTT 403/timeout/isi bukan Indonesia),
+// track itu DIBUANG dari daftar `tracks` — bukan cuma flag-nya yang
+// dimatikan — karena klien memilih track native dari `tracks`
+// berdasarkan lang "id" tanpa memeriksa flag. Frontend lalu jatuh
+// ke /subtitle/id (translate + cache) seperti biasa. Validasi hanya
+// berjalan bila ada track berlabel Indonesia (judul lain tanpa biaya
+// tambahan), dengan anggaran 5 detik supaya resolve video tidak
+// tertahan lama.
+//
 // Respons: { ok, data: { ani_id, episode, source, server, server_label,
 //   hls, hls_proxy, tracks: [{lang, label, url, proxy_url}],
 //   has_indonesian_track, intro, outro } }.
-// URL upstream dikembalikan apa adanya (kontrak PRD) + versi proxy-nya
-// (hls_proxy / proxy_url) supaya Frontend bisa memilih memutar lewat
-// proxy tanpa membocorkan URL upstream ke log — server TIDAK PERNAH
-// mencatat URL upstream (hanya ani_id/ep/sumber/server/status).
+// `has_indonesian_track` = true HANYA bila ada track Indonesia yang
+// isinya terverifikasi. URL upstream dikembalikan apa adanya (kontrak
+// PRD) + versi proxy-nya (hls_proxy / proxy_url) supaya Frontend bisa
+// memilih memutar lewat proxy tanpa membocorkan URL upstream ke log —
+// server TIDAK PERNAH mencatat URL upstream (hanya ani_id/ep/sumber/
+// server/status).
 const config = require('../config');
 const logger = require('../logger');
 const ratelimit = require('../ratelimit');
 const vidcloud = require('../lib/vidcloud');
 const megaplay = require('../lib/megaplay');
+const nativeTrack = require('../lib/native-track');
 const { sendJson, sendErr, parseIntParam } = require('./common');
 
 function langOf(label) {
@@ -38,7 +55,33 @@ function proxyUrl(url) {
   return `/proxy/hls?u=${encodeURIComponent(url)}`;
 }
 
-function buildVidCloudResponse(aniId, ep, payload) {
+// Pertahankan hanya track "Indonesian" yang isinya terverifikasi.
+// Track lain dilewatkan apa adanya. validateIndonesian(url) =>
+// Promise<boolean> (tidak pernah melempar pada implementasi asli,
+// tapi mock di tes boleh melempar — tetap diperlakukan tidak valid).
+async function filterVerifiedIndonesianTracks(tracks, validateIndonesian, aniId, ep, sourceLabel) {
+  const kept = [];
+  for (const t of tracks) {
+    if (t.lang !== 'id') {
+      kept.push(t);
+      continue;
+    }
+    let ok = false;
+    try {
+      ok = await validateIndonesian(t.url);
+    } catch (e) {
+      ok = false;
+    }
+    if (ok) {
+      kept.push(t);
+    } else {
+      logger.warn(`resolve ani_id=${aniId} ep=${ep} ${sourceLabel}: track "Indonesian" tidak terverifikasi isinya — tidak diklaim (fallback ke /subtitle/id).`);
+    }
+  }
+  return kept;
+}
+
+async function buildVidCloudResponse(aniId, ep, payload, deps) {
   const source = (payload.sources || []).find((s) => s && s.default) || payload.sources[0];
   const tracks = (payload.tracks || []).map((t) => ({
     lang: langOf(t.label),
@@ -46,6 +89,13 @@ function buildVidCloudResponse(aniId, ep, payload) {
     url: t.file,
     proxy_url: proxyUrl(t.file),
   }));
+  const validateIndonesian = (deps && deps.validateIndonesian)
+    || ((url) => nativeTrack.isTrackIndonesian(
+      vidcloud.fetchText, url, config.NATIVE_TRACK_VALIDATE_TIMEOUT_MS,
+    ));
+  const keptTracks = await filterVerifiedIndonesianTracks(
+    tracks, validateIndonesian, aniId, ep, 'vidcloud',
+  );
   return {
     ani_id: aniId,
     episode: ep,
@@ -54,14 +104,14 @@ function buildVidCloudResponse(aniId, ep, payload) {
     server_label: (source && source.label) || null,
     hls: source.file,
     hls_proxy: proxyUrl(source.file),
-    tracks,
-    has_indonesian_track: tracks.some((t) => t.lang === 'id'),
+    tracks: keptTracks,
+    has_indonesian_track: keptTracks.some((t) => t.lang === 'id'),
     intro: payload.intro || { start: 0, end: 0 },
     outro: payload.outro || { start: 0, end: 0 },
   };
 }
 
-async function resolveViaMegaPlay(aniId, ep, embedId) {
+async function resolveViaMegaPlay(aniId, ep, embedId, deps) {
   const dataId = await megaplay.getEmbedDataId(embedId);
   const gs = await megaplay.getSources(dataId, embedId);
   let file = null;
@@ -80,6 +130,13 @@ async function resolveViaMegaPlay(aniId, ep, embedId) {
     url: t.file,
     proxy_url: proxyUrl(t.file),
   }));
+  const validateIndonesian = (deps && deps.validateIndonesian)
+    || ((url) => nativeTrack.isTrackIndonesian(
+      megaplay.fetchText, url, config.NATIVE_TRACK_VALIDATE_TIMEOUT_MS,
+    ));
+  const keptTracks = await filterVerifiedIndonesianTracks(
+    tracks, validateIndonesian, aniId, ep, 'megaplay',
+  );
   return {
     ani_id: aniId,
     episode: ep,
@@ -88,8 +145,8 @@ async function resolveViaMegaPlay(aniId, ep, embedId) {
     server_label: null,
     hls: file,
     hls_proxy: proxyUrl(file),
-    tracks,
-    has_indonesian_track: tracks.some((t) => t.lang === 'id'),
+    tracks: keptTracks,
+    has_indonesian_track: keptTracks.some((t) => t.lang === 'id'),
     intro: gs.intro || { start: 0, end: 0 },
     outro: gs.outro || { start: 0, end: 0 },
   };
@@ -112,7 +169,7 @@ async function handleResolve(req, res, aniIdRaw, epRaw, query) {
   for (const srv of [1, 2, 3]) {
     try {
       const payload = await vidcloud.getSources(aniId, ep, srv);
-      const data = buildVidCloudResponse(aniId, ep, payload);
+      const data = await buildVidCloudResponse(aniId, ep, payload);
       logger.info(`resolve ani_id=${aniId} ep=${ep} sumber=vidcloud server=${srv} ok`);
       return sendJson(res, 200, { ok: true, data });
     } catch (e) {
@@ -137,4 +194,4 @@ async function handleResolve(req, res, aniIdRaw, epRaw, query) {
   return sendErr(res, 502, 'Video tidak dapat dimuat saat ini. Coba lagi sebentar lagi.');
 }
 
-module.exports = { handleResolve };
+module.exports = { handleResolve, buildVidCloudResponse, resolveViaMegaPlay };

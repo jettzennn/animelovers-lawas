@@ -23,6 +23,10 @@ data class VideoSource(
     val subtitleIdUri: Uri? = null,
     /** "native" (dari VidCloud) / "translated" (dari backend) / null (tidak ada). */
     val subtitleIdKind: String? = null,
+    /** Status subtitle Indonesia saat resolve: "complete" | "partial" | null.
+     *  Bila "partial", player meminta ulang ke backend tiap ~15 detik
+     *  sampai complete (kontrak server). */
+    val subtitleIdStatus: String? = null,
     /** URL VTT Inggris (fallback). */
     val subtitleEnUrl: String? = null,
     /** Label server video (mis. "Sora") — untuk log saja. */

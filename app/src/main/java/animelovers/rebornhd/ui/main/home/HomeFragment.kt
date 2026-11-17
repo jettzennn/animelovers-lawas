@@ -8,7 +8,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
@@ -70,7 +69,10 @@ class HomeFragment : Fragment() {
 
         updateAdapter = UpdateAdapter { openDetail(it) }
         binding.recyclerViewUpdate.apply {
-            layoutManager = GridLayoutManager(requireContext(), 3)
+            // Horizontal (desain.md §4.1) — seperti aslinya.
+            layoutManager = LinearLayoutManager(
+                requireContext(), LinearLayoutManager.HORIZONTAL, false
+            )
             adapter = updateAdapter
             isNestedScrollingEnabled = false
         }
@@ -135,6 +137,7 @@ class HomeFragment : Fragment() {
         if (!requireContext().isOnline()) {
             binding.swipeContainerHome.isRefreshing = false
             requireContext().toast(getString(R.string.tidak_ada_koneksi))
+            return
         }
         viewLifecycleOwner.lifecycleScope.launch {
             try {

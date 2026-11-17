@@ -33,6 +33,7 @@ const vidcloud = require('../lib/vidcloud');
 const megaplay = require('../lib/megaplay');
 const vtt = require('../lib/vtt');
 const translate = require('../lib/translate');
+const nativeTrack = require('../lib/native-track');
 const { sendErr, parseIntParam } = require('./common');
 
 // Janji background yang sedang berjalan per "ani_id:ep".
@@ -97,13 +98,13 @@ async function resolveSourceVtt(aniId, ep, megaEmbedId) {
     if (idTrack) {
       try {
         const text = await vidcloud.fetchText(idTrack.file);
-        const parsed = vtt.parseVtt(text);
-        // Validasi: label "Indonesian" belum tentu isinya Indonesia.
-        if (parsed.cues.length >= 5
-          && translate.looksIndonesian(text.slice(0, 3000))) {
+        // Validasi isi lewat helper bersama (kriteria sama dengan
+        // /resolve): label "Indonesian" belum tentu isinya Indonesia.
+        const cueCount = nativeTrack.checkIndonesianVtt(text);
+        if (cueCount > 0) {
           logger.info(`subtitle ani_id=${aniId} ep=${ep} track Indonesia native (vidcloud server 1)`);
           return {
-            kind: 'native', vttText: text, cueCount: parsed.cues.length,
+            kind: 'native', vttText: text, cueCount,
             enHash: vtt.sha256hex(text),
           };
         }

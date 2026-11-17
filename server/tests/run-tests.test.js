@@ -11,6 +11,8 @@ const vidcloud = require('../src/lib/vidcloud');
 const megaplay = require('../src/lib/megaplay');
 const vtt = require('../src/lib/vtt');
 const translate = require('../src/lib/translate');
+const nativeTrack = require('../src/lib/native-track');
+const { buildVidCloudResponse } = require('../src/routes/resolve');
 const proxy = require('../src/routes/proxy');
 const { parseIntParam } = require('../src/routes/common');
 const db = require('../src/db');
@@ -231,4 +233,99 @@ test('db: subtitle_cache simpan + baca (DB sementara)', () => {
     db.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// --- Track "Indonesian" native: validasi isi (temuan Cari Bug #2) ------
+
+function makeVtt(cueTexts) {
+  return 'WEBVTT\n\n' + cueTexts.map((t, i) => {
+    const s = String(i + 1).padStart(2, '0');
+    const e = String(i + 2).padStart(2, '0');
+    return `00:00:${s}.000 --> 00:00:${e}.000\n${t}`;
+  }).join('\n\n') + '\n';
+}
+
+const ID_CUES = [
+  'Selamat pagi semuanya yang ada di sini.',
+  'Mereka datang dengan membawa kabar yang penting.',
+  'Ketika dia tiba, semua orang sudah menunggu.',
+  'Ini adalah sebuah cerita tentang mereka.',
+  'Karena itu, kita harus pergi sekarang juga.',
+  'Namun perjalanan ini tidak akan mudah.',
+];
+
+const EN_CUES = [
+  'Good morning everyone, welcome to the show.',
+  'They came here with important news today.',
+  'When he arrived, everyone was already waiting.',
+  'This is a story about their journey.',
+  'So we have to leave right now.',
+  'But this journey will not be easy.',
+];
+
+test('native-track: checkIndonesianVtt menerima Indonesia ≥5 cue, menolak Inggris / <5 cue / bukan VTT', () => {
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(ID_CUES)), 6);
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(EN_CUES)), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt(makeVtt(ID_CUES.slice(0, 4))), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt('Hello world'), 0);
+  assert.equal(nativeTrack.checkIndonesianVtt('WEBVTT\n\n'), 0);
+});
+
+test('native-track: isTrackIndonesian memakai fetch mock (valid / unduh gagal / isi Inggris)', async () => {
+  const idVtt = makeVtt(ID_CUES);
+  const enVtt = makeVtt(EN_CUES);
+  assert.equal(await nativeTrack.isTrackIndonesian(async () => idVtt, 'https://x/id.vtt'), true);
+  assert.equal(await nativeTrack.isTrackIndonesian(async () => enVtt, 'https://x/id.vtt'), false);
+  // Unduh gagal (mis. VTT server 2 403) = tidak terverifikasi, bukan error.
+  assert.equal(await nativeTrack.isTrackIndonesian(async () => { throw new Error('HTTP 403'); }, 'https://x/id.vtt'), false);
+  // Timeout diteruskan ke fetchText (mock menerimanya sebagai argumen ke-3).
+  let gotTimeout = null;
+  await nativeTrack.isTrackIndonesian(async (url, impl, timeoutMs) => { gotTimeout = timeoutMs; return idVtt; }, 'https://x/id.vtt', 5000);
+  assert.equal(gotTimeout, 5000);
+});
+
+test('resolve: buildVidCloudResponse membuang track Indonesian yang tidak terverifikasi', async () => {
+  const payload = {
+    sources: [{ file: 'https://vidcloud.sbs/stream/master.m3u8?t=abc', label: 'Zexy', default: true }],
+    tracks: [
+      { file: 'https://vidcloud.sbs/stream/id.vtt?t=abc', label: 'Indonesian', kind: 'captions' },
+      { file: 'https://vidcloud.sbs/stream/en.vtt?t=abc', label: 'English', kind: 'captions' },
+    ],
+    intro: { start: 0, end: 0 },
+    outro: { start: 1313, end: 1403 },
+    server: 2,
+  };
+  // Validasi gagal (VTT 403 / isi Inggris) -> track 'id' dibuang,
+  // flag false, track Inggris tetap ada (fallback /subtitle/id).
+  const dropped = await buildVidCloudResponse(235, 1, payload, {
+    validateIndonesian: async () => false,
+  });
+  assert.equal(dropped.has_indonesian_track, false);
+  assert.deepEqual(dropped.tracks.map((t) => t.lang), ['en']);
+  assert.equal(dropped.tracks[0].label, 'English');
+  // Validasi lolos -> track dipertahankan + flag true.
+  const kept = await buildVidCloudResponse(235, 1, payload, {
+    validateIndonesian: async () => true,
+  });
+  assert.equal(kept.has_indonesian_track, true);
+  assert.deepEqual(kept.tracks.map((t) => t.lang), ['id', 'en']);
+});
+
+test('resolve: buildVidCloudResponse tidak memvalidasi bila tidak ada track Indonesian', async () => {
+  const payload = {
+    sources: [{ file: 'https://vidcloud.sbs/stream/master.m3u8?t=abc', label: 'Sora', default: true }],
+    tracks: [
+      { file: 'https://vidcloud.sbs/stream/en.vtt?t=abc', label: 'English', kind: 'captions' },
+    ],
+    intro: { start: 0, end: 0 },
+    outro: { start: 0, end: 0 },
+    server: 1,
+  };
+  let calls = 0;
+  const res = await buildVidCloudResponse(235, 1, payload, {
+    validateIndonesian: async () => { calls++; return true; },
+  });
+  assert.equal(calls, 0);
+  assert.equal(res.has_indonesian_track, false);
+  assert.equal(res.tracks.length, 1);
 });
