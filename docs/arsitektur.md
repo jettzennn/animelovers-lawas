@@ -7,7 +7,7 @@ UI (Activity/Fragment + Adapter + ViewBinding)
         ↓
 Repository (SankaRepository, PlayerRepository)
         ↓
-API (WebView tersembunyi)       Lokal (Room + SharedPreferences)
+API (WebView ditempel 1×1)    Lokal (Room + SharedPreferences)
   SankaWebTransport (satu-satunya) AppDatabase (record.db, kunci SLUG)
   RateLimiter + cache           Prefs ("animlovers")
         ↓
@@ -23,6 +23,14 @@ Aplikasi bicara langsung ke Sanka untuk data dan langsung ke
 Pixeldrain/embed untuk video. Konsekuensinya: (a) tidak ada lagi yang
 harus dijalankan di Termux untuk menonton; (b) semua disiplin (rate
 limit, cache, retry) harus hidup DI DALAM aplikasi.
+
+**v2.0.3 — transport WebView ditempel:** WebView transport DITEMPEL ke
+decor view MainActivity (1×1 px, INVISIBLE, tidak bisa difokuskan) —
+v2.0.2 yang tak tertempel tidak memicu `onPageFinished` di Vivo Faygo
+(Beranda + Jelajahi muter terus). UA default WebView minus penanda
+"Version/4.0" (sisa UA persis bawaan stack WebView di HP itu). Alasan
+gagal tampil di toast (`Gagal memuat (…alasan…)`) + `Log.e`
+(`SankaWebTransport`) — tidak lagi toast generik buta.
 
 ## Alur data utama
 

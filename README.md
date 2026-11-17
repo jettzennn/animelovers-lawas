@@ -21,7 +21,7 @@ Sanka + Pixeldrain, tanpa server yang harus dijalankan di Termux
 - **Nama aplikasi:** AnimLovers (tanpa angka versi di mana pun)
 - **Bahasa:** full Bahasa Indonesia
 - **Min SDK 21, target SDK 34** — Kotlin, XML Views + ViewBinding, Media3,
-  Retrofit + OkHttp, Coil, Room
+  WebView (transport Sanka), OkHttp (hanya Blogger), Coil, Room
 
 ## Fitur
 

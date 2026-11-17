@@ -25,6 +25,7 @@ import animelovers.rebornhd.ui.adapter.BrowseListAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.toast
+import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -240,7 +241,7 @@ class BrowseFragment : Fragment() {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
-                    requireContext().toast(getString(R.string.gagal_memuat))
+                    requireContext().toastSankaError(e)
                 }
             } finally {
                 loadingDone = true
@@ -280,7 +281,7 @@ class BrowseFragment : Fragment() {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
-                    requireContext().toast(getString(R.string.gagal_memuat))
+                    requireContext().toastSankaError(e)
                 }
             } finally {
                 loadingDone = true

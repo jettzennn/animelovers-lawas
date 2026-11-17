@@ -25,6 +25,7 @@ import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.isOnline
 import animelovers.rebornhd.util.toast
+import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -163,7 +164,7 @@ class HomeFragment : Fragment() {
                 // ditelan jadi toast "Gagal memuat".
                 throw e
             } catch (e: Exception) {
-                requireContext().toast(getString(R.string.gagal_memuat))
+                requireContext().toastSankaError(e)
             } finally {
                 if (isAdded) {
                     _binding?.swipeContainerHome?.isRefreshing = false

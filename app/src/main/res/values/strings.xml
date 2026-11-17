@@ -24,6 +24,7 @@
     <string name="semua_genre">Semua Genre</string>
     <string name="tidak_ditemukan">Tidak ditemukan</string>
     <string name="gagal_memuat">Gagal memuat. Tarik ke bawah untuk mencoba lagi.</string>
+    <string name="gagal_memuat_alasan">Gagal memuat (%1$s). Tarik ke bawah untuk mencoba lagi.</string>
     <string name="tidak_ada_koneksi">Tidak ada koneksi internet</string>
 
     <!-- Riwayat -->

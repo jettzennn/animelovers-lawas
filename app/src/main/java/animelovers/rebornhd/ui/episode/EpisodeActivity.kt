@@ -15,6 +15,7 @@ import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.toast
+import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -105,7 +106,7 @@ class EpisodeActivity : BaseActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                toast(getString(R.string.gagal_memuat))
+                toastSankaError(e)
             } finally {
                 binding.swipeContainereeee.isRefreshing = false
             }

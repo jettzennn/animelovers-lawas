@@ -34,6 +34,12 @@ class MainActivity : BaseActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // v2.0.3: tempel WebView transport Sanka ke window — WebView yang
+        // tidak pernah ditempel ke layar tidak memicu onPageFinished di
+        // sebagian HP (Vivo), sehingga Beranda/Jelajahi muter terus
+        // di v2.0.2. Dipanggil tiap onCreate supaya rotasi ikut pindah.
+        app().sankaTransport.attachToWindow(this)
+
         binding.viewpager.adapter = TabsAdapter(this)
         // Seperti aslinya: semua tab selalu hidup.
         binding.viewpager.offscreenPageLimit = 10
@@ -44,6 +50,14 @@ class MainActivity : BaseActivity() {
                 else -> getString(R.string.tab_riwayat)
             }
         }.attach()
+    }
+
+    override fun onDestroy() {
+        // v2.0.3: lepas WebView transport dari window SEBELUM super —
+        // decor view masih menempel di sini, jadi removeView berhasil;
+        // tanpa ini WebView tertinggal di decor Activity yang sudah mati.
+        app().sankaTransport.attachToWindow(null)
+        super.onDestroy()
     }
 
     override fun onBackPressed() {

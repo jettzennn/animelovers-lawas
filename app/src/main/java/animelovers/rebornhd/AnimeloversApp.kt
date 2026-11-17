@@ -25,6 +25,9 @@ import kotlinx.coroutines.SupervisorJob
  * sankaRepository). Anikoto/VidCloud/MegaPlay/backend kecil sudah dihapus.
  * Transport v2.0.2: WebView tersembunyi (Chrome asli) — OkHttp pensiun
  * (sidik TLS-nya diblokir Cloudflare dari IP HP Faygo).
+ * v2.0.3: WebView DITEMPEL ke window MainActivity (attachToWindow di
+ * MainActivity.onCreate) + UA tanpa penanda "Version/4.0" — v2.0.2 yang
+ * tak tertempel tidak memicu onPageFinished di Vivo Faygo.
  */
 class AnimeloversApp : Application() {
 

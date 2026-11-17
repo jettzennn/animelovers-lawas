@@ -1,6 +1,7 @@
 package animelovers.rebornhd.data.repo
 
 import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.api.SankaEmptyResponseException
 import animelovers.rebornhd.data.api.SankaHttpException
 import animelovers.rebornhd.data.api.SankaTransport
 import animelovers.rebornhd.data.local.FavoriteDao
@@ -15,6 +16,7 @@ import animelovers.rebornhd.data.model.SankaEpisodeItem
 import animelovers.rebornhd.data.model.SankaHome
 import animelovers.rebornhd.util.Constants
 import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -57,6 +59,11 @@ internal fun encodeSegment(value: String): String {
  * Chrome asli yang terbukti lolos. API PUBLIK repository TIDAK berubah
  * (home/terbaru/search/genre/detail/episode + riwayat/favorit + gerbang
  * Ecchi) — UI + PlayerRepository tidak disentuh.
+ *
+ * v2.0.3: WebView DITEMPEL ke decor view MainActivity (1×1 px, tak
+ * terlihat) + UA tanpa "Version/4.0" — v2.0.2 yang tak tertempel tidak
+ * memicu onPageFinished di Vivo Faygo. Alasan gagal kini terlihat
+ * (exception transport berjenis + Log.e + toast beralasan).
  *
  * DISIPLIN RATE LIMIT (PRD v2 §4.3 — 3 pelanggaran = BAN PERMANEN):
  *  1. Throttle ≥1,4 detik antar request (di transport, bukan lagi
@@ -133,20 +140,26 @@ class SankaRepository(
 
     // Gson mengembalikan null (bukan throw) untuk body kosong / literal
     // `null` — samakan dengan converter Retrofit lama: itu IOException,
-    // bukan NPE yang bocor ke UI.
+    // bukan NPE yang bocor ke UI. Jenisnya SankaEmptyResponseException
+    // (v2.0.3) supaya toast bisa menulis alasannya ("respons kosong").
     private inline fun <reified T> parseEnvelope(raw: String): SankaEnvelope<T> =
         gson.fromJson(raw, object : TypeToken<SankaEnvelope<T>>() {}.type)
-            ?: throw IOException("Respons kosong dari Sanka")
+            ?: throw SankaEmptyResponseException()
 
     /**
      * Satu panggilan dengan aturan retry — SAMA seperti callWithRetry lama
      * (OkHttp Response), hanya sumbernya kini string JSON dari transport:
-     * - 2xx → parse (gagal parse = JsonSyntaxException, langsung lolos —
-     *   sama seperti converter Retrofit dulu).
+     * - 2xx → parse DI DALAM try: SankaEmptyResponseException (body
+     *   kosong) ikut di-retry 3× seperti IOException transport;
+     *   JsonSyntaxException (data rusak) langsung lolos tanpa retry —
+     *   sama seperti converter Retrofit dulu.
      * - 429 → RateLimitException (TANPA retry, tanpa penundaan).
      * - 500–599 (scraper timeout) + IOException jaringan → retry maks 3×,
      *   backoff 2 dtk lalu 4 dtk.
-     * - Selain itu → IOException langsung.
+     * - Selain itu → SankaHttpException ASLI dilempar ulang (bukan
+     *   IOException) supaya toast bisa menulis alasannya
+     *   (sankaErrorReason: "server menjawab 403"); 403/404 gagal cepat,
+     *   tanpa retry.
      * CancellationException TIDAK ditangkap — pembatalan harus lolos.
      */
     private suspend fun <T> callWithRetry(
@@ -156,20 +169,24 @@ class SankaRepository(
         var attempt = 0
         while (true) {
             attempt++
-            val raw = try {
-                block()
+            try {
+                val raw = block()
+                return parse(raw)
             } catch (e: SankaHttpException) {
                 if (e.statusCode in 500..599 && attempt < 3) {
                     delay(2_000L * attempt)
                     continue
                 }
-                throw IOException("Sanka menjawab ${e.statusCode}")
+                throw e
+            } catch (e: JsonSyntaxException) {
+                // Gagal parse = data rusak, bukan gangguan jaringan —
+                // jangan retry (sama seperti converter Retrofit dulu).
+                throw e
             } catch (e: IOException) {
                 if (attempt >= 3) throw e
                 delay(2_000L * attempt)
                 continue
             }
-            return parse(raw)
         }
     }
 

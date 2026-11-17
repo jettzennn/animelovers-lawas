@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.widget.Toast
 import animelovers.rebornhd.R
+import animelovers.rebornhd.data.api.sankaErrorReason
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,6 +15,22 @@ fun Context.toast(message: String) =
 
 fun Context.toastLong(message: String) =
     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+/**
+ * Toast gagal khas Sanka — alasannya ikut tertulis supaya tidak menebak
+ * lagi ("Gagal memuat (server menjawab 403)..."). Bila alasannya tidak
+ * diketahui, pakai toast generik seperti dulu. Rate limit TIDAK lewat
+ * sini (sudah ditangani terpisah dengan pesan khusus di tiap layar).
+ * Pesan panjang → toastLong supaya sempat dibaca.
+ */
+fun Context.toastSankaError(e: Exception) {
+    val reason = sankaErrorReason(e)
+    if (reason != null) {
+        toastLong(getString(R.string.gagal_memuat_alasan, reason))
+    } else {
+        toast(getString(R.string.gagal_memuat))
+    }
+}
 
 /** True bila perangkat terhubung ke WiFi (untuk gerbang WiFi player). */
 fun Context.isOnWifi(): Boolean {
