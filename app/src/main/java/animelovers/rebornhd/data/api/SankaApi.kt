@@ -61,6 +61,34 @@ class SankaThrottleInterceptor(
 }
 
 /**
+ * Interceptor User-Agent WAJIB (perbaikan v2.0.1, 2026-11-17): menyetel
+ * header User-Agent ke UA Chrome Android di SEMUA request Sanka.
+ *
+ * Alasan: Cloudflare di depan Sanka memblokir User-Agent default OkHttp
+ * (UA bot yang dikenal) dari IP residensial/seluler —
+ * Beranda v2.0.0 "Gagal memuat" instan di HP Faygo (data seluler + WiFi
+ * tetangga) sementara URL home yang sama KE-LOAD penuh di Chrome HP-nya
+ * (UA browser lolos; JSON status success, featured 3+ judul). Dari IP
+ * sandbox VM, UA okhttp lolos (200) — blokirnya bergantung IP + UA, jadi
+ * satu-satunya perbaikan yang aman adalah memakai UA browser di semua
+ * request. Throttle 1,4 dtk TETAP berlaku (interceptor terpisah) —
+ * perbaikan ini tidak membuka celah rate limit.
+ *
+ * BridgeInterceptor OkHttp hanya menambahkan UA default bila header
+ * belum ada, jadi header yang disetel di sini TIDAK ditimpa.
+ */
+class SankaUserAgentInterceptor(
+    private val userAgent: String
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request().newBuilder()
+            .header("User-Agent", userAgent)
+            .build()
+        return chain.proceed(request)
+    }
+}
+
+/**
  * Klien Sanka Vollerei (sumber Animekompi).
  *
  * Endpoint yang DIPAKAI (semua diuji live 2026-11-17):
@@ -74,7 +102,10 @@ class SankaThrottleInterceptor(
  * TIDAK dipakai: /list (4815 judul / 6,3 MB sekaligus — terlalu berat
  * untuk koneksi seluler lambat).
  *
- * User-Agent: default OkHttp (terbukti 200 di riset; curl tanpa UA → 403).
+ * User-Agent: Chrome Android (bukan default OkHttp — v2.0.0 membuktikan
+ * UA okhttp diblokir Cloudflare dari IP HP Faygo: Beranda "Gagal memuat"
+ * instan, sementara Chrome HP-nya memuat JSON home yang sama. UA ini
+ * terbukti lolos dari jaringan Faygo, 2026-11-17).
  * Semua method mengembalikan Response supaya repository bisa membedakan
  * 429 (jangan retry) dari 500 (scraper timeout — retry + backoff).
  */
@@ -111,6 +142,15 @@ interface SankaApi {
     ): retrofit2.Response<SankaEnvelope<SankaEpisodeData>>
 
     companion object {
+        /**
+         * UA Chrome Android — sama seperti Chrome di HP (terbukti lolos
+         * Cloudflare Sanka dari jaringan Faygo, 2026-11-17; UA default
+         * OkHttp diblokir dari IP itu dan membuat Beranda v2.0.0
+         * "Gagal memuat" instan).
+         */
+        const val CHROME_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
         fun create(
             baseUrl: String,
             connectTimeoutS: Long,
@@ -118,6 +158,7 @@ interface SankaApi {
             minIntervalMs: Long
         ): SankaApi {
             val client = OkHttpClient.Builder()
+                .addInterceptor(SankaUserAgentInterceptor(CHROME_USER_AGENT))
                 .addInterceptor(SankaThrottleInterceptor(minIntervalMs))
                 .connectTimeout(connectTimeoutS, TimeUnit.SECONDS)
                 .readTimeout(readTimeoutS, TimeUnit.SECONDS)
