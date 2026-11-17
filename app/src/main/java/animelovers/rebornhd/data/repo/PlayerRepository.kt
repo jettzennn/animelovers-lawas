@@ -77,8 +77,10 @@ class PlayerRepository(
             val body = response.body() ?: return null
             val vtt = body.string()
             if (!vtt.contains("WEBVTT")) return null
-            val status = response.header("X-Subtitle-Status") ?: "complete"
-            val kind = response.header("X-Subtitle-Source") ?: "translated"
+            // retrofit2.Response TIDAK punya method header(name) — itu
+            // milik okhttp3.Headers. Baca lewat response.headers()[nama].
+            val status = response.headers()["X-Subtitle-Status"] ?: "complete"
+            val kind = response.headers()["X-Subtitle-Source"] ?: "translated"
             val file = File(context.cacheDir, "sub_id_${aniId}_$episode.vtt")
             file.writeText(vtt)
             SubtitleFetch(file, status, kind, vtt)
