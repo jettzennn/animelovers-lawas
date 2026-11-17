@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -31,8 +34,11 @@ android {
             // tetap jalan unsigned di CI dan Deploy yang menandatangani.
             val keystorePropsFile = rootProject.file("keystore.properties")
             if (keystorePropsFile.exists()) {
-                val props = java.util.Properties()
-                props.load(java.io.FileInputStream(keystorePropsFile))
+                // JANGAN tulis java.util.Properties / java.io.FileInputStream di sini:
+                // di skrip build Gradle, `java` dibaca sebagai ekstensi plugin Java,
+                // bukan paket java — jadi `util`/`io` tidak ditemukan (error CI run #4).
+                val props = Properties()
+                props.load(FileInputStream(keystorePropsFile))
                 signingConfig = signingConfigs.create("release") {
                     storeFile = file(props.getProperty("storeFile"))
                     storePassword = props.getProperty("storePassword")

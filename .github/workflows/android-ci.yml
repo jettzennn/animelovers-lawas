@@ -33,7 +33,9 @@ jobs:
       - name: Build debug APK
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --stacktrace | tee build.log
+          # 2>&1 penting: error Kotlin/Gradle keluar lewat stderr — tanpa ini
+          # build.log hanya berisi stdout (artefak run #4 cuma 479 byte).
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()

@@ -47,7 +47,9 @@ jobs:
       - name: Build release APK
         run: |
           set -o pipefail
-          ./gradlew assembleRelease --stacktrace | tee build.log
+          # 2>&1 penting: error Kotlin/Gradle keluar lewat stderr — tanpa ini
+          # build.log hanya berisi stdout.
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()
