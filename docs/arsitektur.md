@@ -32,6 +32,36 @@ v2.0.2 yang tak tertempel tidak memicu `onPageFinished` di Vivo Faygo
 gagal tampil di toast (`Gagal memuat (…alasan…)`) + `Log.e`
 (`SankaWebTransport`) — tidak lagi toast generik buta.
 
+**v2.0.4 — DIAGNOSTIK + PERBAIKAN R8:** uji HP v2.0.3 tetap gagal
+(Beranda kosong + toast GENERIK tanpa alasan, Jelajahi "Tidak
+ditemukan") padahal server Sanka sehat — kegagalannya jenis yang belum
+pernah dipetakan. Satu variabel: buat kegagalan ini BERSUARA. (a)
+data-null amplop (home/detail/episode) kini `SankaApiErrorException`
+— status + message Sanka ikut ke toast (`Gagal memuat (Sanka: error —
+…)`), dan 300 karakter pertama raw response di-`Log.e`
+(`SankaRepository`); dulu IOException polos yang tak terpetakan.
+(b) `sankaErrorReason` kini punya catch-all: exception tak dikenal pun
+tampil sebagai `ClassName: pesan` di toast — tidak ada lagi kegagalan
+tanpa nama. Rate limit tetap ditangani terpisah (bukan lewat toast
+ini). Throttle 1,4 dtk, timeout 30 dtk, attach WebView, UA strip, dan
+aturan retry 429/5xx TIDAK berubah.
+
+**v2.0.4 — PERBAIKAN R8 (root cause "Gagal memuat" v2.0.0–v2.0.3):**
+laporan forensik Gemini + verifikasi Orchestrator dari APK release
+v2.0.3 asli: R8 Full Mode (`isMinifyEnabled = true`, R8 8.2.47)
+menggabungkan subclass TypeToken anonim di `parseEnvelope` + menghapus
+generic Signature → constructor Gson melempar `IllegalStateException`
+tiap parse — dan tipe itu tak terpetakan di toast, jadi kegagalan
+tampil bisu. Tes JVM tidak pernah bisa menangkapnya (tanpa obfuskasi).
+Perbaikan dua lapis: (1) `SankaRepository.parseEnvelope` kini memakai
+`TypeToken.getParameterized` (`envelopeType`/`envelopeListType`) —
+tanpa subclass anonim, kebal R8 apa pun; (2) `proguard-rules.pro`
+menahan `-keepattributes Signature, InnerClasses, EnclosingMethod,
+*Annotation*` + `-keep class com.google.gson.reflect.TypeToken` +
+`-keep class animelovers.rebornhd.data.**` + keep `@SerializedName`.
+`verify.py` kini menolak subclass TypeToken anonim di kode produksi.
+Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
+
 ## Alur data utama
 
 1. **Katalog** — `SankaRepository.home()` (via transport WebView) → `featured` (slider), `latest`

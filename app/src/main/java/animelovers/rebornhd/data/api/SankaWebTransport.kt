@@ -64,6 +64,20 @@ class SankaEmptyResponseException : IOException("Respons kosong dari Sanka")
 
 class SankaUnreadableResponseException : IOException("Respons Sanka tidak bisa dibaca")
 
+/**
+ * Sanka menjawab TAPI amplopnya tanpa data (v2.0.4) — mis. envelope
+ * {"status":"error","message":"..."} dengan HTTP 200. Status + message
+ * asli Sanka ikut dibawa supaya toast bisa menulis penyebabnya.
+ *
+ * Ini jalur yang dicurigai di balik toast generik v2.0.3 (Beranda kosong
+ * + Jelajahi "Tidak ditemukan" di HP Faygo, padahal server sehat):
+ * home/detail/episode dulu melempar IOException POLOS ("...kosong")
+ * yang tak terpetakan sankaErrorReason → toast generik buta.
+ * IOException supaya aturan retry lama tetap berlaku.
+ */
+class SankaApiErrorException(val status: String?, override val message: String?) :
+    IOException("Sanka menjawab tanpa data (status=$status, message=$message)")
+
 /** Pemetaan kode HTTP → exception (sama seperti callWithRetry lama). */
 internal fun exceptionForStatus(statusCode: Int): Exception =
     if (statusCode == 429) RateLimitException() else SankaHttpException(statusCode)
@@ -98,18 +112,26 @@ internal fun stripWebViewMarker(userAgent: String): String =
     userAgent.replace(WEBVIEW_UA_MARKER, "")
 
 /**
- * Alasan gagal yang bisa dibaca user untuk toast (v2.0.3).
- * null = tidak diketahui → pakai toast generik seperti dulu.
- * RateLimitException → null: sudah ditangani terpisah (pesan khusus).
+ * Alasan gagal yang bisa dibaca user untuk toast (v2.0.3; v2.0.4:
+ * SankaApiErrorException + catch-all).
+ *
+ * null HANYA untuk RateLimitException — sudah ditangani terpisah
+ * (pesan khusus) di tiap layar dan TIDAK PERNAH lewat sini. Mulai
+ * v2.0.4 TIDAK ADA lagi kegagalan yang jatuh ke toast generik tanpa
+ * nama: exception yang belum dipetakan pun menampilkan nama kelas +
+ * pesannya (catch-all), supaya uji HP berikutnya langsung menyebut
+ * penyebab sebenarnya, bukan "Gagal memuat" buta.
  */
 fun sankaErrorReason(e: Exception): String? = when (e) {
+    is RateLimitException -> null
     is SankaHttpException -> "server menjawab ${e.statusCode}"
     is SankaTimeoutException -> "batas waktu habis"
     is SankaUnreachableException -> "tidak bisa dijangkau"
     is SankaEmptyResponseException -> "respons kosong"
     is SankaUnreadableResponseException -> "respons tidak bisa dibaca"
     is JsonSyntaxException -> "data tidak bisa dibaca"
-    else -> null
+    is SankaApiErrorException -> "Sanka: ${e.status ?: "?"} — ${e.message?.take(60) ?: "tanpa pesan"}"
+    else -> "${e.javaClass.simpleName}: ${(e.message ?: "tanpa pesan").take(80)}"
 }
 
 /**
@@ -189,6 +211,17 @@ interface SankaTransport {
  * transport punya jenis sendiri (SankaTimeoutException dsb.) supaya
  * toast bisa menulis alasannya (sankaErrorReason) — tidak lagi toast
  * generik buta.
+ *
+ * v2.0.4 — DIAGNOSTIK, bukan tebakan perbaikan: uji HP v2.0.3 tetap
+ * gagal (Beranda kosong, toast GENERIK tanpa alasan) padahal server
+ * sehat — jadi kegagalannya jenis yang belum dipetakan. Dua jalur
+ * IOException polos dihapus: (a) data-null amplop kini
+ * SankaApiErrorException (status + message Sanka ikut dibawa);
+ * (b) decodeJsResult sudah melempar SankaUnreadableResponseException.
+ * sankaErrorReason kini punya catch-all: exception tak dikenal pun
+ * menampilkan "ClassName: pesan" di toast — tidak ada lagi kegagalan
+ * tanpa nama. Throttle, timeout, attach, UA strip, dan aturan retry
+ * TIDAK berubah.
  *
  * DISIPLIN RATE LIMIT (PRD v2 §4.3 — 3 pelanggaran = BAN PERMANEN):
  * throttle 1,4 dtk antar MULAINYA request + Mutex (satu request dalam

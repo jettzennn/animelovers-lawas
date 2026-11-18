@@ -1,6 +1,8 @@
 package animelovers.rebornhd.data.repo
 
+import android.util.Log
 import animelovers.rebornhd.data.api.RateLimitException
+import animelovers.rebornhd.data.api.SankaApiErrorException
 import animelovers.rebornhd.data.api.SankaEmptyResponseException
 import animelovers.rebornhd.data.api.SankaHttpException
 import animelovers.rebornhd.data.api.SankaTransport
@@ -22,7 +24,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
+import java.lang.reflect.Type
 import java.util.concurrent.ConcurrentHashMap
+
+private const val TAG = "SankaRepository"
 
 /**
  * Encode satu segmen path / nilai query (persen-encode UTF-8).
@@ -64,6 +69,13 @@ internal fun encodeSegment(value: String): String {
  * terlihat) + UA tanpa "Version/4.0" — v2.0.2 yang tak tertempel tidak
  * memicu onPageFinished di Vivo Faygo. Alasan gagal kini terlihat
  * (exception transport berjenis + Log.e + toast beralasan).
+ *
+ * v2.0.4 — DIAGNOSTIK: data-null amplop (home/detail/episode) kini
+ * SankaApiErrorException — status + message Sanka ikut dibawa ke toast,
+ * dan 300 karakter pertama raw response di-Log.e. Dulu IOException
+ * polos ("...kosong") yang tak terpetakan → toast generik buta di HP
+ * (v2.0.3). Terbaru/search/genre TETAP `data ?: emptyList()` (daftar
+ * kosong = layar kosong tanpa toast — perilaku lama, sengaja).
  *
  * DISIPLIN RATE LIMIT (PRD v2 §4.3 — 3 pelanggaran = BAN PERMANEN):
  *  1. Throttle ≥1,4 detik antar request (di transport, bukan lagi
@@ -124,6 +136,28 @@ class SankaRepository(
         const val TTL_DETAIL_MS = 10 * 60 * 1000L
     }
 
+    /**
+     * Data null di amplop = Sanka menjawab TAPI tanpa data — mis. envelope
+     * {"status":"error","message":"..."} dengan HTTP 200 (v2.0.4).
+     * Bukan IOException generik: status + message Sanka ikut dibawa
+     * (SankaApiErrorException) supaya toast bisa menulis penyebabnya,
+     * dan 300 karakter pertama raw response di-Log.e supaya penyebabnya
+     * bisa dibaca di logcat tanpa menebak.
+     *
+     * Dilempar DI LUAR callWithRetry (seperti dulu) — error API yang
+     * deterministik TIDAK di-retry 3×; satu request, langsung toast.
+     */
+    private fun <T> requireData(envelope: SankaEnvelope<T>, raw: String, label: String): T {
+        val data = envelope.data
+        if (data != null) return data
+        Log.e(
+            TAG,
+            "$label: data null (status=${envelope.status}, message=${envelope.message}); " +
+                "raw=${raw.take(300)}"
+        )
+        throw SankaApiErrorException(envelope.status, envelope.message)
+    }
+
     private suspend fun <T : Any> cached(key: String, ttlMs: Long, block: suspend () -> T): T {
         val mutex = mutexFor(key)
         mutex.withLock {
@@ -138,12 +172,33 @@ class SankaRepository(
         }
     }
 
+    // Tipe Gson untuk amplop Sanka — DIBANGUN DENGAN TypeToken.getParameterized,
+    // BUKAN subclass TypeToken anonim (v2.0.4, perbaikan R8): R8 Full Mode di
+    // build Release menggabungkan subclass TypeToken anonim + menghapus
+    // generic Signature, sehingga constructor TypeToken melempar
+    // IllegalStateException di APK Release (bug v2.0.0–v2.0.3 —
+    // Beranda + Jelajahi "Gagal memuat" padahal server sehat). getParameterized
+    // membangun tipe dari Class biasa — tidak ada subclass anonim yang bisa
+    // digabung/dihapus R8. Aturan keep Gson di proguard-rules.pro adalah
+    // lapis kedua untuk model + anotasi SerializedName.
+    private fun <T> envelopeType(dataClass: Class<T>): Type =
+        TypeToken.getParameterized(SankaEnvelope::class.java, dataClass).type
+
+    private fun <T> envelopeListType(itemClass: Class<T>): Type {
+        val listType = TypeToken.getParameterized(List::class.java, itemClass).type
+        return TypeToken.getParameterized(SankaEnvelope::class.java, listType).type
+    }
+
     // Gson mengembalikan null (bukan throw) untuk body kosong / literal
     // `null` — samakan dengan converter Retrofit lama: itu IOException,
     // bukan NPE yang bocor ke UI. Jenisnya SankaEmptyResponseException
     // (v2.0.3) supaya toast bisa menulis alasannya ("respons kosong").
-    private inline fun <reified T> parseEnvelope(raw: String): SankaEnvelope<T> =
-        gson.fromJson(raw, object : TypeToken<SankaEnvelope<T>>() {}.type)
+    private fun <T> parseEnvelope(raw: String, dataClass: Class<T>): SankaEnvelope<T> =
+        gson.fromJson(raw, envelopeType(dataClass))
+            ?: throw SankaEmptyResponseException()
+
+    private fun <T> parseEnvelopeList(raw: String, itemClass: Class<T>): SankaEnvelope<List<T>> =
+        gson.fromJson(raw, envelopeListType(itemClass))
             ?: throw SankaEmptyResponseException()
 
     /**
@@ -193,18 +248,21 @@ class SankaRepository(
     // ---- Katalog ----
 
     suspend fun home(): SankaHome = cached("home", TTL_HOME_MS) {
+        // Raw disimpan di parse lambda (v2.0.4) supaya requireData bisa
+        // me-Log.e 300 karakter pertamanya saat data null.
+        var lastRaw = ""
         val envelope = callWithRetry(
             { transport.getJson("anime/animekompi/home") },
-            { raw -> parseEnvelope<SankaHome>(raw) }
+            { raw -> lastRaw = raw; parseEnvelope(raw, SankaHome::class.java) }
         )
-        envelope.data ?: throw IOException("Beranda Sanka kosong")
+        requireData(envelope, lastRaw, "home")
     }
 
     suspend fun terbaru(page: Int = 1): List<SankaEpisodeItem> =
         cached("terbaru:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
                 { transport.getJson("anime/animekompi/terbaru?page=$page") },
-                { raw -> parseEnvelope<List<SankaEpisodeItem>>(raw) }
+                { raw -> parseEnvelopeList(raw, SankaEpisodeItem::class.java) }
             )
             envelope.data ?: emptyList()
         }
@@ -213,7 +271,7 @@ class SankaRepository(
         cached("search:$query:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
                 { transport.getJson("anime/animekompi/search?q=${encodeSegment(query)}&page=$page") },
-                { raw -> parseEnvelope<List<SankaAnime>>(raw) }
+                { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )
             envelope.data ?: emptyList()
         }
@@ -222,26 +280,28 @@ class SankaRepository(
         cached("genre:$slug:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
                 { transport.getJson("anime/animekompi/genre/${encodeSegment(slug)}?page=$page") },
-                { raw -> parseEnvelope<List<SankaAnime>>(raw) }
+                { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )
             envelope.data ?: emptyList()
         }
 
     suspend fun detail(slug: String): SankaDetail = cached("detail:$slug", TTL_DETAIL_MS) {
+        var lastRaw = ""
         val envelope = callWithRetry(
             { transport.getJson("anime/animekompi/detail/${encodeSegment(slug)}") },
-            { raw -> parseEnvelope<SankaDetail>(raw) }
+            { raw -> lastRaw = raw; parseEnvelope(raw, SankaDetail::class.java) }
         )
-        envelope.data ?: throw IOException("Detail Sanka kosong")
+        requireData(envelope, lastRaw, "detail")
     }
 
     /** Episode: TANPA cache (URL sumber kedaluwarsa) — ambil segar tiap putar. */
     suspend fun episode(slug: String): SankaEpisodeData {
+        var lastRaw = ""
         val envelope = callWithRetry(
             { transport.getJson("anime/animekompi/episode/${encodeSegment(slug)}") },
-            { raw -> parseEnvelope<SankaEpisodeData>(raw) }
+            { raw -> lastRaw = raw; parseEnvelope(raw, SankaEpisodeData::class.java) }
         )
-        return envelope.data ?: throw IOException("Episode Sanka kosong")
+        return requireData(envelope, lastRaw, "episode")
     }
 
     // ---- Gerbang Ecchi (kunci ketiganya: Ecchi + Erotica + Hentai) ----

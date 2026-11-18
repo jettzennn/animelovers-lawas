@@ -313,6 +313,45 @@ for f in kt_files:
                 f"dengan .let / label lambda"
             )
 
+# ---------- 12. Gson/TypeToken tahan R8 (v2.0.4) ----------
+# Subclass TypeToken anonim DILARANG di kode produksi: R8 Full Mode
+# menggabungkannya + menghapus generic Signature → constructor TypeToken
+# melempar IllegalStateException di APK Release (bug v2.0.0–v2.0.3:
+# Beranda + Jelajahi "Gagal memuat" padahal server sehat). Tipe Gson
+# WAJIB dibangun via TypeToken.getParameterized.
+for f in kt_files:
+    rel = f.relative_to(ROOT)
+    text = f.read_text(encoding="utf-8")
+    if re.search(r"object\s*:\s*TypeToken", text):
+        errors.append(
+            f"{rel}: subclass TypeToken anonim dilarang — pakai "
+            f"TypeToken.getParameterized (R8 Full Mode menghapus generic "
+            f"Signature subclass anonim → IllegalStateException di Release)"
+        )
+_repo_file = JAVA / "animelovers/rebornhd/data/repo/SankaRepository.kt"
+if "getParameterized" not in _repo_file.read_text(encoding="utf-8"):
+    errors.append(
+        "SankaRepository.kt: parseEnvelope wajib memakai "
+        "TypeToken.getParameterized (bukan subclass TypeToken anonim)"
+    )
+# Class anotasi Gson WAJIB ditahan di proguard-rules.pro (v2.0.4, temuan
+# Cari Bug): -keepattributes + -keepclassmembers @SerializedName saja
+# TIDAK cukup — bila class com.google.gson.annotations.SerializedName
+# ikut ter-shake, semua @SerializedName terbuang dan Gson fallback ke
+# nama field Java (nomor episode → 0, next/prev hilang, gerbang Ecchi
+# di daftar episode jebol).
+_proguard = ROOT / "app" / "proguard-rules.pro"
+if not re.search(
+    r"-keep\s+class\s+com\.google\.gson\.annotations",
+    _proguard.read_text(encoding="utf-8"),
+):
+    errors.append(
+        "app/proguard-rules.pro: wajib ada keep rule untuk "
+        "com.google.gson.annotations (class anotasi @SerializedName "
+        "harus ditahan — tanpa ini R8 menghapus semua @SerializedName "
+        "dari dex Release)"
+    )
+
 # ---------- Laporan ----------
 
 print(f"Resource terdefinisi: "

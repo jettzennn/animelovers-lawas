@@ -11,3 +11,28 @@
 
 # Media3: jangan hapus kelas yang dipakai lewat refleksi di DefaultRenderersFactory.
 -keep class androidx.media3.exoplayer.** { *; }
+
+# Gson + R8 (v2.0.4 — PERBAIKAN root cause "Gagal memuat" v2.0.0–v2.0.3):
+# R8 Full Mode menggabungkan subclass TypeToken anonim + menghapus generic
+# Signature, sehingga constructor TypeToken melempar IllegalStateException
+# di APK Release (parse SankaEnvelope gagal total padahal server sehat).
+# Aturan di bawah menahan Signature + class TypeToken + seluruh model data.
+# Lapis kedua: SankaRepository membangun tipe via TypeToken.getParameterized
+# (tanpa anonymous class), jadi parse kebal R8 meski aturan ini terlewat.
+-keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class animelovers.rebornhd.data.** { *; }
+# -keepattributes *Annotation* + -keepclassmembers @SerializedName di
+# bawah menahan FIELD-nya, tapi BUKAN class anotasi itu sendiri: begitu
+# class com.google.gson.annotations.SerializedName ikut ter-shake oleh
+# R8, semua pemakaian @SerializedName ikut terbuang dan Gson fallback
+# ke nama field Java (bug Cari Bug v2.0.4: nomor episode → 0, tombol
+# next/prev hilang, gerbang Ecchi di daftar episode jebol). Karena itu
+# class anotasi Gson WAJIB ditahan beserta isinya.
+-keep class com.google.gson.annotations.** { *; }
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-keepclasseswithmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
