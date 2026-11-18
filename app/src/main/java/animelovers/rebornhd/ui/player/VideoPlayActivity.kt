@@ -399,7 +399,7 @@ class VideoPlayActivity : BaseActivity() {
              * berubah saat play()/pause() dipanggil (termasuk ketuk tombol
              * play/pause itu sendiri).
              */
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, @Player.PlayWhenReadyChangeReason reason: Int) {
                 updatePlayPauseButton()
                 if (playWhenReady) {
                     val p = exoPlayer
@@ -922,7 +922,7 @@ class VideoPlayActivity : BaseActivity() {
      *   tidak pernah cukup buffer untuk frame pertama — Media3 diam di
      *   BUFFERING, tanpa error, tanpa retry, tanpa dialog. Itulah spinner
      *   tanpa ujung.
-     * Pengawas: selama BUFFERING, cek tiap 10 dtk totalBufferedDurationMs.
+     * Pengawas: selama BUFFERING, cek tiap 10 dtk totalBufferedDuration.
      * Bila buffer TIDAK bertambah 30 dtk (jaringan macet total) ATAU
      * buffering satu kandidat sudah 120 dtk (merambat tapi tak kunjung
      * cukup — 720p di 5,5 KB/dtk butuh ~86 dtk untuk 2,5 dtk buffer),
@@ -939,7 +939,7 @@ class VideoPlayActivity : BaseActivity() {
         if (isWebViewMode) return
         stallWatchJob?.cancel()
         val startedAt = SystemClock.elapsedRealtime()
-        var lastBufferedMs = exoPlayer.totalBufferedDurationMs
+        var lastBufferedMs = exoPlayer.totalBufferedDuration
         var lastGrowthAt = startedAt
         stallWatchJob = lifecycleScope.launch {
             while (isActive) {
@@ -948,7 +948,7 @@ class VideoPlayActivity : BaseActivity() {
                 if (p.playbackState != Player.STATE_BUFFERING || !p.playWhenReady) break
                 if (currentSource !== candidate) break
                 val now = SystemClock.elapsedRealtime()
-                val buffered = p.totalBufferedDurationMs
+                val buffered = p.totalBufferedDuration
                 if (buffered > lastBufferedMs) {
                     lastBufferedMs = buffered
                     lastGrowthAt = now
