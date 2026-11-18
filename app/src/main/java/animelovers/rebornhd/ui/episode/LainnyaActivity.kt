@@ -14,6 +14,7 @@ import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
@@ -54,7 +55,7 @@ class LainnyaActivity : BaseActivity() {
         binding.toolbarLainnya.title = getString(
             if (mode == MODE_MOSTVIEW) R.string.terlaris else R.string.episode_baru
         )
-        binding.toolbarLainnya.setNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
+        binding.toolbarLainnya.setTintedNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
         binding.toolbarLainnya.setNavigationOnClickListener { finish() }
 
         adapter = BrowseGridAdapter { anime ->

@@ -73,6 +73,14 @@ class BrowseFragment : Fragment() {
     private var searchJob: Job? = null
     private var loadingDone = false
 
+    /**
+     * Penanda muat pertama (v2.0.7 #4) — true setelah load() pertama
+     * dijalankan dari onResume (tab pertama kali dipilih). onResume juga
+     * terpanggil saat kembali dari Detail — tanpa penanda ini, tiap
+     * kembali akan memuat ulang.
+     */
+    private var hasLoadedOnce = false
+
     /** SearchView di toolbar — disimpan agar reload() bisa mereset teksnya. */
     private var searchView: SearchView? = null
 
@@ -125,7 +133,24 @@ class BrowseFragment : Fragment() {
 
         genreNames.add(getString(R.string.semua_genre))
         setupToolbar()
-        load()
+        // v2.0.7 #4: JANGAN load() di sini — fragment ini dibuat offscreen
+        // sejak awal (offscreenPageLimit=10), dan load() mengikat poster
+        // (~12) yang langsung berebut bandwidth dengan Beranda. Muat
+        // pertama ditunda ke onResume (lihat di bawah): ViewPager2 hanya
+        // me-RESUME fragment yang tampil.
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Visibility-gating (v2.0.7 #4): muat pertama HANYA saat tab
+        // Jelajahi pertama kali dipilih (fragment di-RESUME oleh ViewPager2
+        // saat menjadi tab aktif; saat offscreen hanya STARTED). Poster
+        // Jelajahi termuat saat itu — bukan saat aplikasi dibuka.
+        // JSON tetap dari cache home() (nol request tambahan); yang ditunda
+        // hanya pengikatan poster ke RecyclerView.
+        if (!hasLoadedOnce) {
+            load()
+        }
     }
 
     private fun setupToolbar() {
@@ -226,6 +251,10 @@ class BrowseFragment : Fragment() {
 
     /** Muat daftar default (home) — tanpa request tambahan bila home di-cache. */
     private fun load() {
+        // Observasi O-1 (Cari Bug v2.0.7): batalkan load() sebelumnya
+        // supaya dua load() tidak berjalan bersamaan (mis. onResume +
+        // pull-to-refresh berkejaran — hasil lama bisa menimpa hasil baru).
+        loadJob?.cancel()
         val repo = requireContext().app().sankaRepository
         loadJob = viewLifecycleOwner.lifecycleScope.launch {
             binding.swipeContainer.isRefreshing = true
@@ -233,6 +262,12 @@ class BrowseFragment : Fragment() {
                 currentItems = repo.home().browseDefault
                 rebuildGenres()
                 applyFilter()
+                // Perbaikan L-1 (Cari Bug v2.0.7): flag hanya diset di
+                // jalur SUKSES — bila muat pertama gagal (offline /
+                // lambat / 429), onResume berikutnya mencoba lagi.
+                // Sebelumnya flag diset sebelum load() jalan, jadi tab
+                // tetap kosong sampai pull-to-refresh.
+                hasLoadedOnce = true
             } catch (e: RateLimitException) {
                 if (isAdded) {
                     requireContext().toast(getString(R.string.terlalu_banyak_permintaan))

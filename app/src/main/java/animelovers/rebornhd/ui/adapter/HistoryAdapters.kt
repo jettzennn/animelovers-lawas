@@ -8,6 +8,7 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.data.local.entity.FavoriteEntity
 import animelovers.rebornhd.data.local.entity.VideoEntity
 import animelovers.rebornhd.data.model.SankaAnime
+import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.databinding.ItemEpisodeBinding
 import animelovers.rebornhd.databinding.ItemFavoritesHeaderBinding
 import animelovers.rebornhd.databinding.ItemHistoryBinding
@@ -87,7 +88,7 @@ class HistoryAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val b = holder.binding
-        b.posterhistoryView.load(item.idposter) {
+        b.posterhistoryView.load(rewritePosterHost(item.idposter)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
             crossfade(true)
@@ -132,7 +133,7 @@ class HistoryDetailAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val b = holder.binding
-        b.posterhistorydetView.load(item.idposter) {
+        b.posterhistorydetView.load(rewritePosterHost(item.idposter)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
             crossfade(true)

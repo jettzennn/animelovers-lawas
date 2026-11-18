@@ -58,6 +58,14 @@ class MainActivity : BaseActivity() {
         // berpengaruh apa-apa; (c) malas yang sesungguhnya (load hanya saat
         // tab dipilih) justru membuat Jelajahi kosong saat pertama dibuka
         // — persis yang dilarang D3. Yang dipotong hanya delay Splash (D2).
+        // v2.0.7 #4 — KOREKSI sebagian dari D3 (riset Q3): alasan (a) benar
+        // untuk JSON, tapi SALAH untuk poster — load() BrowseFragment
+        // mengikat ~12 poster yang langsung berebut bandwidth dengan
+        // Beranda. Yang kini ditunda hanya MUAT PERTAMA (poster) sampai tab
+        // dipilih — BrowseFragment.onResume, sekali saja (hasLoadedOnce).
+        // JSON tetap dari cache home() (nol request tambahan), dan
+        // offscreenPageLimit TETAP 10 (tidak diubah). Jelajahi tidak kosong
+        // saat pertama dibuka — posternya termuat begitu tab dipilih.
         binding.viewpager.offscreenPageLimit = 10
         TabLayoutMediator(binding.tabs, binding.viewpager) { tab, position ->
             tab.text = when (position) {

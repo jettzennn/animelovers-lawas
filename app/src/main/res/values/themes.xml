@@ -9,9 +9,17 @@
         <item name="colorAccent">@color/colorAccent</item>
         <item name="colorControlNormal">@color/black</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- v2.0.7 #2: overlay AppBar sadar-tema — LightTheme memakai
+             overlay terang (di bawah), DarkTheme menimpa ke overlay gelap.
+             Layout merujuk ?attr/appBarOverlay, bukan satu style mati. -->
+        <item name="appBarOverlay">@style/AppTheme.AppBarOverlay</item>
     </style>
 
     <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <!-- Overlay AppBar untuk tema gelap (v2.0.7 #2): hint + teks ketikan
+         SearchView, ikon kaca pembesar + X, dan ikon menu jadi terang. -->
+    <style name="AppTheme.AppBarOverlay.Dark" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
 
     <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
 
@@ -20,6 +28,13 @@
         <item name="bgColor">#2b2a2a</item>
         <item name="metaTextColor">#aeaeae</item>
         <item name="textColor">#ffffff</item>
+        <!-- v2.0.7 #2 — AKAR masalah mode gelap (riset Q2): colorControlNormal
+             hitam diwarisi AppTheme di KEDUA tema, jadi ikon-ikon kontrol
+             (kaca pembesar + X SearchView, ikon menu search, panah Spinner
+             genre, toggle grid, panah kembali toolbar) hitam di atas latar
+             gelap = tidak kelihatan. Di DarkTheme, kontrol harus putih. -->
+        <item name="colorControlNormal">@color/putih</item>
+        <item name="appBarOverlay">@style/AppTheme.AppBarOverlay.Dark</item>
     </style>
 
     <!-- Tema terang (pref theme = "0"). -->

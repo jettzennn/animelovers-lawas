@@ -3,7 +3,13 @@ package animelovers.rebornhd.util
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.util.TypedValue
 import android.widget.Toast
+import androidx.annotation.DrawableRes
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import animelovers.rebornhd.R
 import animelovers.rebornhd.data.api.sankaErrorReason
 import java.text.SimpleDateFormat
@@ -58,3 +64,28 @@ fun formatWaktu(epochMs: Long): String {
 fun episodeLabel(number: Int, isMovie: Boolean, context: Context): String =
     if (isMovie) context.getString(R.string.film)
     else context.getString(R.string.episode_label, number)
+
+/**
+ * Ikon navigasi toolbar yang di-tint ?attr/colorControlNormal (v2.0.7 #2).
+ * Drawable panah kembali (ic_arrow_back_black_24dp) berisi hitam keras
+ * tanpa tint — di tema gelap tidak kelihatan di atas latar gelap. Fungsi
+ * ini memasang ikon dengan tint dari tema aktif (putih di DarkTheme,
+ * hitam di LightTheme) — sama seperti panah up standar AppCompat, dan
+ * persis cara aslinya (LainnyaActivity asli men-tint ikon navigasi
+ * dengan black_overlay). Dipakai EpisodeActivity, LainnyaActivity,
+ * SettingActivity — ketiganya menampilkan panah kembali toolbar.
+ */
+fun Toolbar.setTintedNavigationIcon(@DrawableRes iconRes: Int) {
+    val drawable = AppCompatResources.getDrawable(context, iconRes)?.mutate() ?: return
+    val typedValue = TypedValue()
+    context.theme.resolveAttribute(
+        androidx.appcompat.R.attr.colorControlNormal, typedValue, true
+    )
+    val color = if (typedValue.resourceId != 0) {
+        ContextCompat.getColor(context, typedValue.resourceId)
+    } else {
+        typedValue.data
+    }
+    DrawableCompat.setTint(drawable, color)
+    navigationIcon = drawable
+}

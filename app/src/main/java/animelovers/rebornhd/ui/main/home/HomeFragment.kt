@@ -81,7 +81,15 @@ class HomeFragment : Fragment() {
                 requireContext(), LinearLayoutManager.HORIZONTAL, false
             )
             adapter = updateAdapter
-            isNestedScrollingEnabled = false
+            // v2.0.7 #9: nested scrolling WAJIB aktif — RecyclerView
+            // horizontal di dalam ViewPager2 (yang juga horizontal). Bila
+            // dimatikan, RecyclerView tidak pernah memanggil
+            // requestDisallowInterceptTouchEvent saat digeser, jadi ViewPager2
+            // mencegat gestur horizontal dan PINDAH TAB (ke Jelajahi).
+            // Dengan nested scrolling aktif, geser horizontal dipegang baris
+            // ini (kartu bergeser), geser vertikal tetap diteruskan ke
+            // ScrollView induk — perilaku normal keduanya.
+            isNestedScrollingEnabled = true
         }
 
         mostViewAdapter = MostViewAdapter { openDetail(it) }
@@ -90,7 +98,9 @@ class HomeFragment : Fragment() {
                 requireContext(), LinearLayoutManager.HORIZONTAL, false
             )
             adapter = mostViewAdapter
-            isNestedScrollingEnabled = false
+            // v2.0.7 #9: sama seperti recyclerViewUpdate di atas — tanpa
+            // ini, geser kartu Terlaris pindah tab ke Jelajahi.
+            isNestedScrollingEnabled = true
         }
 
         binding.lainnyaupdate.setOnClickListener {
@@ -147,40 +157,62 @@ class HomeFragment : Fragment() {
     private fun load() {
         // v2.0.6 #7: render dari CACHE dulu (bila ada, <10 menit) — Beranda
         // terisi instan di bukaan kedua; fetch segar tetap jalan di
-        // belakang dan memperbarui tampilan bila selesai. Tanpa cache
-        // (bukaan dingin pertama), jalur lama: spinner sampai fetch kembali.
+        // belakang dan memperbarui tampilan bila selesai.
+        // v2.0.7 #3: cache kini DUA lapis — memori (sinkron, di bawah)
+        // + DISK (bila memori kosong: baca + parse JSON di IO, tanpa
+        // jaringan — bukaan dingin setelah proses mati pun terisi instan;
+        // fetch segar tetap jalan di belakang via homeFresh()).
         // Bila OFFLINE tapi cache ada → tampilkan cache tanpa toast (data
         // paling lama 10 menit — cukup segar); offline TANPA cache → toast
-        // seperti dulu. Satu-satunya request di sini tetap repo.home()
-        // (cache + dedup Mutex per kunci) — tidak ada request tambahan,
-        // throttle 1,4 dtk tidak tersentuh.
+        // seperti dulu. Satu-satunya request di sini tetap repo.home() /
+        // repo.homeFresh() (cache + dedup Mutex per kunci) — tidak ada
+        // request tambahan, throttle 1,4 dtk tidak tersentuh.
         val repo = requireContext().app().sankaRepository
-        val cachedHome = repo.homeCached()
-        if (cachedHome != null) {
-            home = cachedHome
+        val start = SystemClock.elapsedRealtime()
+        val memHome = repo.homeCached()
+        if (memHome != null) {
+            home = memHome
             applyData()
             Log.d(
                 "AnimLoversTiming",
-                "T+${SystemClock.elapsedRealtime()} Home render dari cache"
+                "T+${SystemClock.elapsedRealtime()} Home render dari cache memori"
             )
-            if (!requireContext().isOnline()) {
-                binding.swipeContainerHome.isRefreshing = false
-                return
-            }
-        } else if (!requireContext().isOnline()) {
-            binding.swipeContainerHome.isRefreshing = false
-            requireContext().toast(getString(R.string.tidak_ada_koneksi))
-            return
         }
-        // Nyalakan spinner di awal — sebelumnya spinner hanya muncul saat
-        // pull-to-refresh, jadi kegagalan instan terlihat tanpa tanda loading.
-        binding.swipeContainerHome.isRefreshing = true
         viewLifecycleOwner.lifecycleScope.launch {
+            // Bukaan dingin (memori kosong): coba DISK dulu sebelum jaringan.
+            if (home == null) {
+                val diskHome = repo.homeDiskCached()
+                if (diskHome != null) {
+                    home = diskHome
+                    applyData()
+                    Log.d(
+                        "AnimLoversTiming",
+                        "T+${SystemClock.elapsedRealtime()} Home render dari disk " +
+                            "(${SystemClock.elapsedRealtime() - start}ms)"
+                    )
+                }
+            }
+            if (!isAdded) return@launch
+            if (!requireContext().isOnline()) {
+                _binding?.swipeContainerHome?.isRefreshing = false
+                if (home == null) {
+                    requireContext().toast(getString(R.string.tidak_ada_koneksi))
+                }
+                return@launch
+            }
+            // Nyalakan spinner di awal — sebelumnya spinner hanya muncul saat
+            // pull-to-refresh, jadi kegagalan instan terlihat tanpa tanda loading.
+            binding.swipeContainerHome.isRefreshing = true
             try {
                 // v2.0.5: tonggak ukur rantai render Beranda (D2) — T+0 =
                 // Splash onCreate (lihat AnimLoversTiming di logcat).
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() mulai")
-                home = repo.home()
+                // Bila tampilan berasal dari memori yang masih segar,
+                // home() cukup (tanpa jaringan — datanya memang segar).
+                // Bila dari disk / belum ada, homeFresh() memaksa fetch
+                // jaringan — home() biasa akan mengembalikan data disk
+                // (tanpa jaringan) dan tampilan tidak pernah diperbarui.
+                home = if (memHome != null) repo.home() else repo.homeFresh()
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() kembali")
                 applyData()
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home applyData selesai (render)")

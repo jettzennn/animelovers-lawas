@@ -12,7 +12,9 @@ import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.Environment
+import android.util.Log
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -44,6 +46,7 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.app
 import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.PlayableSource
+import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.data.repo.EpisodeSources
 import animelovers.rebornhd.databinding.ActivityVideoBinding
 import animelovers.rebornhd.ui.BaseActivity
@@ -52,6 +55,8 @@ import animelovers.rebornhd.util.isOnWifi
 import animelovers.rebornhd.util.toast
 import coil.load
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -82,6 +87,14 @@ import kotlin.coroutines.cancellation.CancellationException
  *   bila yang sedang diputar error; ke WebView (embed) TIDAK otomatis —
  *   ditanya dulu lewat dialog (v2.0.6 #1b): pindah ke website hanya lewat
  *   ketukan eksplisit pengguna, tidak pernah karena buffering lambat.
+ * - v2.0.7 item 14–16 (fallback lintas-sumber): rantai diperpanjang —
+ *   setelah Blogger Animekompi, coba ok.ru (ekstrak tier hd → sd dari
+ *   URL embed Animekompi), lalu Samehadaku (cari episode yang sama →
+ *   Blogger ekstrak itag 22 → 18), baru dialog WebView. Lapis 2–3 MALAS
+ *   (tidak di-fetch bila lapis 1 sukses; diambil saat resolve hanya bila
+ *   lapis 1 kosong, atau belakangan oleh tryLazyLayer bila semua
+ *   kandidat sebelumnya gagal). Pengawas macet-buffering (#8) berlaku
+ *   per kandidat di semua lapis, ambang tidak diubah.
  * - v2.0.6 (D4): player WAJIB mulai dari video LANGSUNG di kontrol
  *   aplikasi sendiri — default pref `hdOnly` kini "1" (720p direct dulu);
  *   embed WebView HANYA bila tidak ada kandidat direct sama sekali.
@@ -173,11 +186,35 @@ class VideoPlayActivity : BaseActivity() {
      *  episode/sumber berganti sebelum media item dipasang. */
     private var playJob: Job? = null
 
-    /** Job fetch lazy Blogger (#6) — dibatalkan bila episode berganti. */
-    private var bloggerJob: Job? = null
+    /** Job fetch lazy lintas-lapis (#6 Blogger, item 15 ok.ru, item 16
+     * Samehadaku) — dibatalkan bila episode berganti. */
+    private var lazyLayerJob: Job? = null
 
-    /** Ekstrak Blogger lazy sudah dicoba untuk episode ini (sekali saja). */
-    private var bloggerAttempted: Boolean = false
+    /**
+     * Ekstrak Blogger lazy sudah dicoba untuk FALLBACK episode ini
+     * (v2.0.7 #8, perbaikan bug Cari Bug v2.0.6 L-1): DIPISAH dari alih
+     * kualitas — fetch untuk alih kualitas (ketuk ikon resolusi) TIDAK
+     * BOLEH menghabiskan jatah fetch fallback. Sebelumnya satu flag
+     * dipakai kedua jalur: alih kualitas yang gagal menekan fetch
+     * Blogger di tryNextCandidate, sehingga dialog embed muncul sebelum
+     * itag 22/18 benar-benar dicoba.
+     */
+    private var bloggerAttemptedFallback: Boolean = false
+
+    /** Ekstrak ok.ru lazy sudah dicoba untuk FALLBACK episode ini (item 15). */
+    private var okRuAttemptedFallback: Boolean = false
+
+    /** Adapter Samehadaku sudah dicoba untuk FALLBACK episode ini (item 16). */
+    private var samehadakuAttemptedFallback: Boolean = false
+
+    /** Ekstrak Blogger lazy sudah dicoba untuk ALIH KUALITAS episode ini. */
+    private var bloggerAttemptedQuality: Boolean = false
+
+    /** Job pengawas macet-buffering (v2.0.7 #8) — lihat startStallWatch(). */
+    private var stallWatchJob: Job? = null
+
+    /** Waktu mulai kandidat berjalan (elapsedRealtime) — untuk log. */
+    private var candidateStartedAtMs: Long = 0L
 
     /** Error WebView sudah ditangani untuk load embed ini (sekali saja). */
     private var webViewErrorShown: Boolean = false
@@ -210,6 +247,18 @@ class VideoPlayActivity : BaseActivity() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     companion object {
+        /** Tag logcat rantai putar (v2.0.7 #8) — kandidat + transisi state + stall. */
+        private const val TAG_PLAYER = "AnimLoversPlayer"
+
+        /** Pengawas macet-buffering (v2.0.7 #8): cek tiap 10 dtk. */
+        private const val STALL_CHECK_INTERVAL_MS = 10_000L
+
+        /** Buffer tidak bertambah selama ini → kandidat dianggap macet. */
+        private const val STALL_NO_GROWTH_MS = 30_000L
+
+        /** Buffering satu kandidat paling lama ini → lanjut kandidat berikut. */
+        private const val STALL_MAX_MS = 120_000L
+
         fun start(
             context: Context,
             animeSlug: String,
@@ -309,9 +358,17 @@ class VideoPlayActivity : BaseActivity() {
                     Player.STATE_READY -> {
                         binding.progressBar.visibility = View.GONE
                         updateBufferingUi(false)
+                        stopStallWatch()
+                        updatePlayPauseButton()
                         if (!hasFirstFrame) {
                             hasFirstFrame = true
                             hideInitialLoading()
+                            Log.d(
+                                TAG_PLAYER,
+                                "Ep $episode: frame pertama setelah " +
+                                    "${SystemClock.elapsedRealtime() - candidateStartedAtMs}ms " +
+                                    "(kandidat ${currentSource?.kind})"
+                            )
                         }
                     }
                     Player.STATE_BUFFERING -> {
@@ -319,8 +376,38 @@ class VideoPlayActivity : BaseActivity() {
                             binding.progressBar.visibility = View.VISIBLE
                         }
                         updateBufferingUi(true)
+                        updatePlayPauseButton()
+                        // v2.0.7 #8: awasi macet — stream yang terbuka tapi
+                        // tidak pernah cukup buffer TIDAK menghasilkan error,
+                        // jadi rantai kandidat tidak maju sendiri (lihat
+                        // startStallWatch).
+                        if (exoPlayer.playWhenReady && !isWebViewMode) {
+                            startStallWatch()
+                        }
                     }
-                    Player.STATE_ENDED -> onPlaybackEnded()
+                    Player.STATE_ENDED -> {
+                        stopStallWatch()
+                        updatePlayPauseButton()
+                        onPlaybackEnded()
+                    }
+                    Player.STATE_IDLE -> stopStallWatch()
+                }
+            }
+
+            /**
+             * Tombol play/pause bergantian (v2.0.7 #6) — playWhenReady
+             * berubah saat play()/pause() dipanggil (termasuk ketuk tombol
+             * play/pause itu sendiri).
+             */
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
+                updatePlayPauseButton()
+                if (playWhenReady) {
+                    val p = exoPlayer
+                    if (p.playbackState == Player.STATE_BUFFERING && !isWebViewMode) {
+                        startStallWatch()
+                    }
+                } else {
+                    stopStallWatch()
                 }
             }
 
@@ -364,9 +451,26 @@ class VideoPlayActivity : BaseActivity() {
                     ?.localConfiguration?.uri?.toString()
                 val source = currentSource
                 if (source == null || source.isWebView || currentUri != source.url) return
+                // Log TANPA URL (token stream sensitif) — hanya jenis error
+                // + penyebabnya (mis. InvalidResponseCodeException = HTTP
+                // 451/404: file di-takedown. KOREKSI v2.0.7 (O-1 Cari Bug):
+                // HTTP 451 DI-retry 8× oleh DefaultLoadErrorHandlingPolicy
+                // Media3 (jeda 0,1,2,3,4,5,5 dtk, maks ~20 dtk/kandidat) —
+                // "gagal cepat / tanpa retry" untuk 451 adalah SALAH.
+                // onPlayerError ini baru tiba SETELAH retry itu habis.
+                Log.w(
+                    TAG_PLAYER,
+                    "Ep $episode: error kandidat ${source.kind} setelah " +
+                        "${SystemClock.elapsedRealtime() - candidateStartedAtMs}ms " +
+                        "(${error.errorCodeName}, ${error.cause?.javaClass?.simpleName})"
+                )
+                stopStallWatch()
                 tryNextCandidate()
             }
         })
+        // Keadaan awal tombol play/pause (v2.0.7 #6): sebelum play(),
+        // playWhenReady=false → hanya ▶ yang tampil.
+        updatePlayPauseButton()
     }
 
     // ---- Setup WebView (mode embed) ----
@@ -502,7 +606,7 @@ class VideoPlayActivity : BaseActivity() {
         titleView?.text = animeTitle
         updateEpisodeLabel()
         val posterView = playerView.findViewById<ImageView>(R.id.postervideo)
-        posterView?.load(animePoster) {
+        posterView?.load(rewritePosterHost(animePoster)) {
             placeholder(R.drawable.splashh)
             // v2.0.6 #4: error BERBEDA dari placeholder (ikon netral) —
             // poster yang gagal muat tidak lagi tampil sebagai chibi.
@@ -511,6 +615,17 @@ class VideoPlayActivity : BaseActivity() {
         }
 
         playerView.findViewById<View>(R.id.fabvid)?.setOnClickListener { saveAndFinish() }
+
+        // Play/pause (v2.0.7 #6 + perbaikan H-1 Cari Bug): kedua tombol
+        // ini view biasa di layout kontrol kustom — PlayerControlView
+        // Media3 1.2.1 hanya mengikat SATU tombol `exo_play_pause`, yang
+        // tidak ada di layout ini (grep: 0 kemunculan di res/ + java/),
+        // jadi library tidak menyentuh keduanya sama sekali. Ikat
+        // langsung di sini; play()/pause() mengubah playWhenReady →
+        // onPlayWhenReadyChanged → updatePlayPauseButton() menukar
+        // visibilitasnya (pause → hanya ▶, main → hanya ❚❚).
+        playerView.findViewById<View>(R.id.exo_play)?.setOnClickListener { player?.play() }
+        playerView.findViewById<View>(R.id.exo_pause)?.setOnClickListener { player?.pause() }
 
         // FIT/FILL.
         val screenMode = playerView.findViewById<TextView>(R.id.screenmode)
@@ -666,14 +781,14 @@ class VideoPlayActivity : BaseActivity() {
      */
     private fun fetchBloggerForQualitySwitch(restorePosition: Long) {
         val all = sources ?: return
-        if (bloggerAttempted) return
+        if (bloggerAttemptedQuality) return
         val iframeUrl = all.bloggerIframeUrl
         if (iframeUrl.isNullOrBlank()) return
-        bloggerAttempted = true
+        bloggerAttemptedQuality = true
         showInitialLoading()
         val snapshot = all
-        bloggerJob?.cancel()
-        bloggerJob = lifecycleScope.launch {
+        lazyLayerJob?.cancel()
+        lazyLayerJob = lifecycleScope.launch {
             val blogger = try {
                 app().playerRepository.fetchBloggerCandidates(iframeUrl)
             } catch (e: CancellationException) {
@@ -685,9 +800,15 @@ class VideoPlayActivity : BaseActivity() {
             if (sources !== snapshot) return@launch
             val current = sources ?: return@launch
             val embedIndex = current.candidates.indexOfFirst { it.isWebView }
-            if (blogger.isNotEmpty() && embedIndex >= 0) {
+            // L-14: buang kandidat yang URL-nya sudah ada (Blogger
+            // mungkin sudah di-fetch eager saat resolve() — tanpa cek
+            // ini itag 22 masuk dua kali lalu diputar ulang).
+            val fresh = blogger.filter { c ->
+                current.candidates.none { it.url == c.url }
+            }
+            if (fresh.isNotEmpty() && embedIndex >= 0) {
                 val updated = current.candidates.toMutableList()
-                updated.addAll(embedIndex, blogger)
+                updated.addAll(embedIndex, fresh)
                 sources = current.copy(candidates = updated)
             }
             val sdIndex = sources?.candidates
@@ -765,6 +886,108 @@ class VideoPlayActivity : BaseActivity() {
         }
     }
 
+    /**
+     * Satu tombol play/pause bergantian (v2.0.7 #6 — seperti aslinya):
+     * pause → hanya ▶ (exo_play); main → hanya ❚❚ (exo_pause); tidak
+     * pernah keduanya sekaligus. Dikelola eksplisit di sini (bukan
+     * mengandalkan PlayerView): listener ini didaftarkan SETELAH
+     * PlayerView memasang listener internalnya, jadi keputusan kita yang
+     * menang. Dipanggil dari onPlaybackStateChanged +
+     * onPlayWhenReadyChanged + akhir setupPlayer.
+     */
+    private fun updatePlayPauseButton() {
+        val playerView = binding.exoPlayerView
+        val exoPlayer = player ?: return
+        val playing = exoPlayer.playWhenReady &&
+            exoPlayer.playbackState != Player.STATE_ENDED &&
+            exoPlayer.playbackState != Player.STATE_IDLE
+        playerView.findViewById<View>(R.id.exo_play)?.visibility =
+            if (playing) View.GONE else View.VISIBLE
+        playerView.findViewById<View>(R.id.exo_pause)?.visibility =
+            if (playing) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Pengawas macet-buffering (v2.0.7 #8) — diagnosis + perbaikan untuk
+     * episode yang mentok "Memuat video..." (Yasei S2 Ep 1, Tensei II Ep 1,
+     * terverifikasi live 2026-11-19):
+     * - Pixeldrain + token Animekompi kedua episode menjawab HTTP 451
+     *   (file di-takedown — kontrol Terlaris #1 tetap 200, jadi bukan
+     *   blok IP). KOREKSI v2.0.7 (O-1 Cari Bug): HTTP 451 DI-retry 8×
+     *   oleh DefaultLoadErrorHandlingPolicy Media3 (jeda 0,1,2,3,4,5,5
+     *   dtk, maks ~20 dtk/kandidat) — "gagal cepat / tanpa retry" untuk
+     *   451 adalah SALAH; onPlayerError baru tiba setelah retry itu
+     *   habis, lalu rantai maju ke Blogger itag 22/18 (terbukti ada).
+     * - itag 22 (720p) di koneksi lambat bisa terbuka TANPA error tapi
+     *   tidak pernah cukup buffer untuk frame pertama — Media3 diam di
+     *   BUFFERING, tanpa error, tanpa retry, tanpa dialog. Itulah spinner
+     *   tanpa ujung.
+     * Pengawas: selama BUFFERING, cek tiap 10 dtk totalBufferedDurationMs.
+     * Bila buffer TIDAK bertambah 30 dtk (jaringan macet total) ATAU
+     * buffering satu kandidat sudah 120 dtk (merambat tapi tak kunjung
+     * cukup — 720p di 5,5 KB/dtk butuh ~86 dtk untuk 2,5 dtk buffer),
+     * anggap kandidat macet → tryNextCandidate() (ke kandidat berikut —
+     * 360p / ok.ru / Samehadaku, lalu dialog).
+     * Batas ini per kandidat, bukan per episode — kandidat berikut (360p,
+     * ~1/4 byte 720p) punya peluang nyata untuk jalan di koneksi lambat.
+     * Pengawas berlaku per kandidat di SEMUA lapis rantai (v2.0.7 item 17:
+     * ambang TIDAK diubah untuk lapis ok.ru/Samehadaku).
+     */
+    private fun startStallWatch() {
+        val exoPlayer = player ?: return
+        val candidate = currentSource ?: return
+        if (isWebViewMode) return
+        stallWatchJob?.cancel()
+        val startedAt = SystemClock.elapsedRealtime()
+        var lastBufferedMs = exoPlayer.totalBufferedDurationMs
+        var lastGrowthAt = startedAt
+        stallWatchJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(STALL_CHECK_INTERVAL_MS)
+                val p = player ?: break
+                if (p.playbackState != Player.STATE_BUFFERING || !p.playWhenReady) break
+                if (currentSource !== candidate) break
+                val now = SystemClock.elapsedRealtime()
+                val buffered = p.totalBufferedDurationMs
+                if (buffered > lastBufferedMs) {
+                    lastBufferedMs = buffered
+                    lastGrowthAt = now
+                } else if (now - lastGrowthAt >= STALL_NO_GROWTH_MS) {
+                    Log.w(
+                        TAG_PLAYER,
+                        "Ep $episode: kandidat ${candidate.kind} MACET — buffer " +
+                            "tidak bertambah ${STALL_NO_GROWTH_MS / 1000} dtk " +
+                            "(total ${buffered}ms) — lanjut ke kandidat berikut"
+                    )
+                    tryNextCandidate()
+                    break
+                }
+                if (now - startedAt >= STALL_MAX_MS) {
+                    Log.w(
+                        TAG_PLAYER,
+                        "Ep $episode: kandidat ${candidate.kind} buffering " +
+                            "${STALL_MAX_MS / 1000} dtk tanpa frame pertama — " +
+                            "lanjut ke kandidat berikut"
+                    )
+                    tryNextCandidate()
+                    break
+                }
+            }
+        }
+    }
+
+    private fun stopStallWatch() {
+        stallWatchJob?.cancel()
+        stallWatchJob = null
+    }
+
+    /** Host URL saja (tanpa token/query) — untuk log yang aman dibaca. */
+    private fun hostOf(url: String): String = try {
+        java.net.URI(url).host ?: "?"
+    } catch (e: Exception) {
+        "?"
+    }
+
     // ---- Loading awal ----
 
     /**
@@ -831,8 +1054,12 @@ class VideoPlayActivity : BaseActivity() {
         // dibatalkan tidak lagi menulis sources/currentSource episode lama.
         loadJob?.cancel()
         playJob?.cancel()
-        bloggerJob?.cancel()
-        bloggerAttempted = false
+        lazyLayerJob?.cancel()
+        bloggerAttemptedFallback = false
+        okRuAttemptedFallback = false
+        samehadakuAttemptedFallback = false
+        bloggerAttemptedQuality = false
+        stopStallWatch()
         webViewFallbackDialogShown = false
         exitWebViewMode()
         player?.stop()
@@ -913,6 +1140,15 @@ class VideoPlayActivity : BaseActivity() {
         candidateIndex = index
         currentSource = source
         isHd = source.isHd
+        candidateStartedAtMs = SystemClock.elapsedRealtime()
+        stopStallWatch()
+        // Log TANPA URL (token stream sensitif) — host saja cukup untuk
+        // membedakan Pixeldrain / token / Blogger / embed di logcat.
+        Log.d(
+            TAG_PLAYER,
+            "Ep $episode: putar kandidat #$index kind=${source.kind} " +
+                "label=${source.qualityLabel} host=${hostOf(source.url)}"
+        )
         // Tinggi video kandidat lama tidak berlaku untuk kandidat baru —
         // label kembali ke label sumber sampai onVideoSizeChanged tiba.
         videoHeight = 0
@@ -930,61 +1166,143 @@ class VideoPlayActivity : BaseActivity() {
     private fun tryNextCandidate() {
         val all = sources ?: return
         val nextIndex = candidateIndex + 1
+        Log.d(
+            TAG_PLAYER,
+            "Ep $episode: kandidat #$candidateIndex (${currentSource?.kind}) " +
+                "habis — coba #$nextIndex"
+        )
         if (nextIndex >= all.candidates.size) {
             toast(getString(R.string.gagal_memutar, episode))
             saveAndFinish()
             return
         }
         val next = all.candidates[nextIndex]
-        // Lazy Blogger (#6): sebelum jatuh ke embed (kandidat terakhir),
-        // coba ekstrak URL Blogger sekali — bila ada, sisipkan sebelum
-        // embed supaya urutan prioritas T1b tetap utuh (direct → token →
-        // Blogger → embed), tanpa membayar fetch Blogger di tiap resolve.
-        if (next.isWebView && !bloggerAttempted) {
-            bloggerAttempted = true
-            val iframeUrl = all.bloggerIframeUrl
-            if (!iframeUrl.isNullOrBlank()) {
-                showInitialLoading()
-                val snapshot = all
-                bloggerJob?.cancel()
-                bloggerJob = lifecycleScope.launch {
-                    val blogger = try {
-                        app().playerRepository.fetchBloggerCandidates(iframeUrl)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        emptyList()
-                    }
-                    // Episode sudah berganti selagi fetch berjalan — abaikan
-                    // (jangan menulis kandidat ke sources episode baru).
-                    if (sources !== snapshot) return@launch
-                    val current = sources ?: return@launch
-                    if (blogger.isNotEmpty()) {
-                        val updated = current.candidates.toMutableList()
-                        updated.addAll(nextIndex, blogger)
-                        sources = current.copy(candidates = updated)
-                    }
-                    val restore = player?.currentPosition ?: 0L
-                    // Bila Blogger tidak menghasilkan kandidat, nextIndex
-                    // masih embed — JANGAN masuk WebView otomatis (lihat
-                    // playNextOrAsk).
-                    playNextOrAsk(nextIndex, restore)
-                }
-                return
-            }
-        }
+        // Rantai fallback lintas-sumber (v2.0.7 item 14–16): sebelum jatuh
+        // ke embed (kandidat terakhir), coba SATU lapis malas yang belum
+        // dicoba — urutan Blogger (lapis 1) → ok.ru (lapis 2) →
+        // Samehadaku (lapis 3). Tiap lapis sekali per episode; hasil
+        // disisipkan sebelum embed supaya urutan prioritas tetap utuh,
+        // tanpa membayar fetch lapis itu di tiap resolve.
+        if (next.isWebView && tryLazyLayer(nextIndex)) return
         val restore = player?.currentPosition ?: 0L
         playNextOrAsk(nextIndex, restore)
+    }
+
+    /**
+     * Coba SATU lapis malas berikutnya (Blogger → ok.ru → Samehadaku):
+     * true = fetch diluncurkan (kelanjutan ditangani coroutine-nya);
+     * false = tidak ada lapis tersisa (pemanggil lanjut ke embed/dialog).
+     * Lapis yang tidak punya bahan (tanpa URL iframe/embed, tanpa judul
+     * serial) ditandai sudah dicoba lalu DILEWATI — rantai tidak berhenti
+     * di lapis yang memang tidak bisa dicoba.
+     */
+    private fun tryLazyLayer(nextIndex: Int): Boolean {
+        val all = sources ?: return false
+        // Lapis 1: Blogger (Animekompi).
+        if (!bloggerAttemptedFallback) {
+            bloggerAttemptedFallback = true
+            val iframeUrl = all.bloggerIframeUrl
+            if (!iframeUrl.isNullOrBlank()) {
+                launchLazyLayer(nextIndex, "Blogger") {
+                    app().playerRepository.fetchBloggerCandidates(iframeUrl)
+                }
+                return true
+            }
+        }
+        // Lapis 2: ok.ru.
+        if (!okRuAttemptedFallback) {
+            okRuAttemptedFallback = true
+            val okRuUrl = all.okRuEmbedUrl
+            if (!okRuUrl.isNullOrBlank()) {
+                launchLazyLayer(nextIndex, "ok.ru") {
+                    app().playerRepository.fetchOkRuCandidates(okRuUrl)
+                }
+                return true
+            }
+        }
+        // Lapis 3: Samehadaku.
+        if (!samehadakuAttemptedFallback) {
+            samehadakuAttemptedFallback = true
+            val title = all.animeTitle
+            if (title.isNotBlank()) {
+                val episodeNumber = all.episodeNumber
+                launchLazyLayer(nextIndex, "Samehadaku") {
+                    app().playerRepository.fetchSamehadakuCandidates(
+                        title, episodeNumber
+                    )
+                }
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Luncurkan fetch satu lapis malas; sisipkan hasilnya, lanjut putar.
+     * Bila lapis ini tidak menghasilkan kandidat, nextIndex masih embed —
+     * JANGAN masuk WebView otomatis (lihat playNextOrAsk). Bila
+     * menghasilkan, nextIndex kini menunjuk kandidat pertama lapis baru.
+     * Lapis berikut belum dicoba saat itu — tidak masalah: bila kandidat
+     * baru ini gagal, tryNextCandidate dipanggil lagi dan tryLazyLayer
+     * melanjutkan dari lapis berikutnya (flag lapis ini sudah true).
+     * 429 (RateLimitException) TIDAK ditelan — toast rate-limit + keluar
+     * (L-2), sama seperti jalur resolve() awal.
+     */
+    private fun launchLazyLayer(
+        nextIndex: Int,
+        layerName: String,
+        fetch: suspend () -> List<PlayableSource>
+    ) {
+        val snapshot = sources ?: return
+        showInitialLoading()
+        lazyLayerJob?.cancel()
+        lazyLayerJob = lifecycleScope.launch {
+            val found = try {
+                fetch()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RateLimitException) {
+                // L-2: 429 di lapis mana pun = toast rate-limit + keluar
+                // (tanpa retry) — jangan telan jadi dialog
+                // "Putar lewat website?" (penyebabnya bukan "tidak ada
+                // file", melainkan API dibatasi).
+                hideInitialLoading()
+                toast(getString(R.string.terlalu_banyak_permintaan))
+                saveAndFinish()
+                return@launch
+            } catch (e: Exception) {
+                emptyList()
+            }
+            Log.d(TAG_PLAYER, "Ep $episode: $layerName lazy → ${found.size} kandidat")
+            // Episode sudah berganti selagi fetch berjalan — abaikan
+            // (jangan menulis kandidat ke sources episode baru).
+            if (sources !== snapshot) return@launch
+            val current = sources ?: return@launch
+            // L-14: lapis ini mungkin SUDAH di-fetch secara eager saat
+            // resolve() (flag fallback hanya di-set di tryLazyLayer) —
+            // buang kandidat yang URL-nya sudah ada supaya tidak masuk
+            // dua kali lalu diputar ulang.
+            val fresh = found.filter { c ->
+                current.candidates.none { it.url == c.url }
+            }
+            if (fresh.isNotEmpty()) {
+                val updated = current.candidates.toMutableList()
+                updated.addAll(nextIndex, fresh)
+                sources = current.copy(candidates = updated)
+            }
+            val restore = player?.currentPosition ?: 0L
+            playNextOrAsk(nextIndex, restore)
+        }
     }
 
     /**
      * Lanjutkan ke kandidat `index` — dengan SATU pengecualian (v2.0.6
      * #1b): bila kandidat itu EMBED, JANGAN masuk WebView otomatis dari
      * kontrol aplikasi. Semua kandidat direct sudah dicoba (termasuk
-     * retry internal Media3 8× + ekstrak Blogger lazy) — tanya pengguna
-     * dulu lewat dialog; hanya ketukan eksplisit "Putar lewat website"
-     * yang boleh memindahkan player ke website. Tanpa ketukan, player
-     * keluar dengan toast jujur (seperti asli).
+     * retry internal Media3 8× + ekstrak lazy Blogger/ok.ru/Samehadaku)
+     * — tanya pengguna dulu lewat dialog; hanya ketukan eksplisit "Putar
+     * lewat website" yang boleh memindahkan player ke website. Tanpa
+     * ketukan, player keluar dengan toast jujur (seperti asli).
      */
     private fun playNextOrAsk(index: Int, restore: Long) {
         val all = sources ?: return
@@ -1003,8 +1321,13 @@ class VideoPlayActivity : BaseActivity() {
      * kembali) = toast jujur + keluar, seperti asli saat video gagal.
      */
     private fun showWebViewFallbackDialog(embedIndex: Int, restorePosition: Long) {
+        // L-12: jangan tampilkan dialog di Activity yang sedang selesai
+        // (jendela finish() → onDestroy() — lifecycleScope belum batal
+        // di situ; dialog di Activity yang selesai = window-leak/crash).
+        if (isFinishing || isDestroyed) return
         if (webViewFallbackDialogShown) return
         webViewFallbackDialogShown = true
+        Log.d(TAG_PLAYER, "Ep $episode: semua direct habis — dialog fallback WebView")
         hideInitialLoading()
         binding.progressBar.visibility = View.GONE
         AlertDialog.Builder(this, alertTheme())
@@ -1279,6 +1602,7 @@ class VideoPlayActivity : BaseActivity() {
             binding.webViewContainer.removeView(binding.webView)
             binding.webView.destroy()
         }
+        stopStallWatch()
         player?.release()
         player = null
         super.onDestroy()

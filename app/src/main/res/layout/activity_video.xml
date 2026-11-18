@@ -21,7 +21,14 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             app:controller_layout_id="@layout/exo_playback_control_view"
-            app:show_buffering="when_playing" />
+            app:show_buffering="never" />
+        <!-- v2.0.7 #12: SATU indikator loading saja — spinner bawaan
+             PlayerView (show_buffering) DIMATIKAN. Sebelumnya dua spinner
+             tampil bersamaan (spinner PlayerView + ProgressBar aplikasi
+             dengan teks "Memuat video…"). Yang dipertahankan: ProgressBar +
+             teks aplikasi (diatur VideoPlayActivity.showInitialLoading /
+             onPlaybackStateChanged) — seperti aslinya yang hanya punya
+             satu ProgressBar tanpa teks "Memuat". -->
     </FrameLayout>
 
     <!-- Mode WebView (embed) — bilah atas minimal: FAB kembali + judul +

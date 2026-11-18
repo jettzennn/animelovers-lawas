@@ -8,6 +8,7 @@ import animelovers.rebornhd.data.auth.AuthRepository
 import animelovers.rebornhd.data.auth.StubAuthRepository
 import animelovers.rebornhd.data.local.AppDatabase
 import animelovers.rebornhd.data.repo.PlayerRepository
+import animelovers.rebornhd.data.repo.SamehadakuRepository
 import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.Prefs
@@ -16,7 +17,12 @@ import coil.ImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import okhttp3.Dispatcher
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Response
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -55,11 +61,25 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
         )
     }
 
-    /** ImageLoader Coil aplikasi (v2.0.6 #4) — timeout baca 30 detik. */
+    /**
+     * ImageLoader Coil aplikasi (v2.0.6 #4) — timeout baca 30 detik.
+     *
+     * v2.0.7 #1b: Coil 2.5.0 TIDAK retry otomatis — request poster yang
+     * gagal (putus di tengah jalan) langsung jadi ikon error sampai rebind.
+     * PosterRetryInterceptor mengulang SEKALI request yang gagal karena
+     * jaringan / 5xx (bukan 4xx — file memang tidak ada, retry sia-sia),
+     * dengan jeda 1 detik. Terbatas 1× supaya tidak menahan antrean lama.
+     * v2.0.7 #1c: maxRequestsPerHost 3 — poster yang terlihat (slider →
+     * Terlaris → Episode Baru, sesuai urutan bind) selesai dulu; konkurensi
+     * 5 default membuat 5 poster berebut bandwidth yang sama dan semuanya
+     * lambat.
+     */
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .okHttpClient {
                 OkHttpClient.Builder()
+                    .dispatcher(Dispatcher().apply { maxRequestsPerHost = 3 })
+                    .addInterceptor(PosterRetryInterceptor())
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .readTimeout(30, TimeUnit.SECONDS)
                     .writeTimeout(15, TimeUnit.SECONDS)
@@ -86,14 +106,76 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
     val authRepository: AuthRepository by lazy { StubAuthRepository(this) }
 
     val sankaRepository: SankaRepository by lazy {
-        SankaRepository(sankaTransport, database.videoDao(), database.favoriteDao())
+        // v2.0.7 #3: cache disk Beranda — filesDir (bertahan antar proses,
+        // bukan cacheDir yang bisa dibersihkan sistem). TTL 10 menit,
+        // diukur dari lastModified file (lihat SankaRepository).
+        SankaRepository(
+            sankaTransport, database.videoDao(), database.favoriteDao(),
+            File(filesDir, "home_cache.json")
+        )
+    }
+
+    val samehadakuRepository: SamehadakuRepository by lazy {
+        // v2.0.7 item 16: adapter Samehadaku memakai TRANSPORT YANG SAMA
+        // dengan SankaRepository (throttle + Mutex + timeout 30 dtk
+        // berlaku untuk semua sumber — tidak ada client bebas).
+        SamehadakuRepository(sankaRepository.samehadakuTransport())
     }
 
     val playerRepository: PlayerRepository by lazy {
-        PlayerRepository(sankaRepository)
+        PlayerRepository(sankaRepository, samehadakuRepository)
     }
 }
 
 /** Akses Application dari Activity/Fragment mana pun. */
 fun android.content.Context.app(): AnimeloversApp =
     applicationContext as AnimeloversApp
+
+/**
+ * Retry SATU kali untuk request gambar (poster) yang gagal karena
+ * jaringan (IOException) atau server 5xx — v2.0.7 #1b.
+ * 4xx tidak diulang (file memang tidak ada). Dipasang HANYA di OkHttpClient
+ * Coil (poster) — TIDAK menyentuh transport Sanka (throttle 45/menit
+ * tetap utuh; retry poster tidak menghitung ke kuota Sanka karena hostnya
+ * CDN animekompi, bukan sankavollerei.web.id).
+ */
+private class PosterRetryInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        var lastException: IOException? = null
+        var attempt = 0
+        while (true) {
+            var response: Response? = null
+            try {
+                response = chain.proceed(chain.request())
+            } catch (e: IOException) {
+                lastException = e
+            }
+            if (response != null) {
+                if (response.isSuccessful) return response
+                // 4xx (mis. 404: file memang tidak ada) TIDAK di-retry —
+                // langsung gagal supaya tidak menahan antrean sia-sia.
+                val retryable = response.code in 500..599
+                val code = response.code
+                response.close()
+                if (!retryable) throw IOException("Poster HTTP $code (tidak di-retry)")
+                lastException = IOException("Poster HTTP $code")
+            }
+            if (attempt >= MAX_POSTER_RETRIES) {
+                throw lastException
+                    ?: IOException("Poster gagal setelah ${attempt + 1} percobaan")
+            }
+            attempt++
+            try {
+                Thread.sleep(POSTER_RETRY_DELAY_MS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw lastException ?: IOException("Poster retry dibatalkan")
+            }
+        }
+    }
+
+    companion object {
+        const val MAX_POSTER_RETRIES = 1
+        const val POSTER_RETRY_DELAY_MS = 1_000L
+    }
+}

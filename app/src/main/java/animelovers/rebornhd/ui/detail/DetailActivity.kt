@@ -14,6 +14,7 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.app
 import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.SankaDetail
+import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.databinding.ActivityDetailBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
@@ -78,11 +79,11 @@ class DetailActivity : BaseActivity() {
 
         // Placeholder langsung dari extras selagi /detail dimuat.
         binding.textViewTitled.text = animeTitle
-        binding.posterDetailView.load(animePoster) {
+        binding.posterDetailView.load(rewritePosterHost(animePoster)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
         }
-        binding.imageDetThumbView.load(animePoster) {
+        binding.imageDetThumbView.load(rewritePosterHost(animePoster)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
         }
@@ -212,11 +213,11 @@ class DetailActivity : BaseActivity() {
         animePoster = data.posterUrl
         genres = data.genreSlugs
 
-        binding.posterDetailView.load(animePoster) {
+        binding.posterDetailView.load(rewritePosterHost(animePoster)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
         }
-        binding.imageDetThumbView.load(animePoster) {
+        binding.imageDetThumbView.load(rewritePosterHost(animePoster)) {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
         }
@@ -231,8 +232,20 @@ class DetailActivity : BaseActivity() {
         }
         binding.textViewGenre.text =
             getString(R.string.genre_format, data.genreNames)
+        // v2.0.7 #11: sinopsis Sanka ditampilkan APA ADANYA, penuh
+        // (layout descDetailView tanpa maxLines — tidak ada pemotongan).
+        // Bila Sanka memberi sinopsis kosong / satu kalimat (mis. Tensei
+        // shitara Ken deshita II: "Musim kedua dari Tensei shitara Ken
+        // deshita."), tidak ada sumber Indonesia lain yang layak —
+        // sinopsis MAL/Jikan berbahasa Inggris (butuh keputusan Faygo soal
+        // bahasa bila dipakai). Itu keterbatasan SUMBER, bukan bug aplikasi
+        // — jangan isi teks palsu. Bila kosong, sembunyikan barisnya
+        // supaya tidak ada blok kosong.
+        val synopsis = data.synopsis.orEmpty().trim()
+        binding.descDetailView.visibility =
+            if (synopsis.isBlank()) View.GONE else View.VISIBLE
         binding.descDetailView.text = HtmlCompat.fromHtml(
-            data.synopsis ?: "", HtmlCompat.FROM_HTML_MODE_LEGACY
+            synopsis, HtmlCompat.FROM_HTML_MODE_LEGACY
         )
 
         val episodes = data.episodes.orEmpty()

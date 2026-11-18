@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ID non-layout — dipakai sebagai kunci tag View. -->
+<resources>
+    <!-- v2.0.7 #1: kunci tag ImageView poster — menyimpan lambda retry
+         (muat ulang poster yang gagal) sampai request berikutnya berhasil. -->
+    <item name="poster_retry_action" type="id" />
+</resources>

@@ -9,6 +9,7 @@ import animelovers.rebornhd.app
 import animelovers.rebornhd.databinding.ActivitySettingBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import coil.load
 import kotlinx.coroutines.launch
@@ -44,7 +45,7 @@ class SettingActivity : BaseActivity() {
         setContentView(binding.root)
 
         binding.toolbarSetting.title = getString(R.string.pengaturan)
-        binding.toolbarSetting.setNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
+        binding.toolbarSetting.setTintedNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
         binding.toolbarSetting.setNavigationOnClickListener { finish() }
 
         if (savedInstanceState != null) {

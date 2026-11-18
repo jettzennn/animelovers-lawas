@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 import animelovers.rebornhd.R
 import animelovers.rebornhd.data.model.SankaAnime
 import animelovers.rebornhd.data.model.SankaEpisodeItem
+import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.databinding.ItemBrowseGridBinding
 import animelovers.rebornhd.databinding.ItemBrowseListBinding
 import animelovers.rebornhd.databinding.ItemMostviewBinding
@@ -32,22 +33,53 @@ import java.util.Locale
  *   placeholder supaya loading vs gagal bisa dibedakan sekilas).
  * Ukuran (dp) mengikuti layout item pemanggil; slider (lebar layar ×
  * 260dp) memakai lebar layar perangkat.
+ *
+ * v2.0.7 #1:
+ * - URL ditulis ulang v10→v11 (rewritePosterHost — idempotent; model
+ *   sudah menulis ulang di posterUrl, ini lapis kedua untuk URL apa pun
+ *   yang lolos dari model).
+ * - Ketuk-coba-lagi: bila request gagal, ketukan pada poster memuat ulang
+ *   URL yang sama (tag R.id.poster_retry_action menyimpan aksinya);
+ *   bila poster berhasil, ketukan diteruskan ke onPosterClick (buka
+ *   Detail — sama seperti ketuk kartu). Tag dibersihkan di tiap bind
+ *   supaya View yang di-recycle tidak menyimpan aksi URL lama.
  */
 private fun loadPoster(
     view: android.widget.ImageView,
     url: String,
     widthDp: Int = 100,
-    heightDp: Int = 150
+    heightDp: Int = 150,
+    onPosterClick: (() -> Unit)? = null
 ) {
     val metrics = view.resources.displayMetrics
     val widthPx = if (widthDp < 0) metrics.widthPixels
     else (widthDp * metrics.density).toInt().coerceAtLeast(1)
     val heightPx = (heightDp * metrics.density).toInt().coerceAtLeast(1)
-    view.load(url) {
+    val finalUrl = rewritePosterHost(url)
+    view.setTag(R.id.poster_retry_action, null)
+    view.setOnClickListener(null)
+    view.load(finalUrl) {
         placeholder(R.drawable.splashh)
         error(R.drawable.ic_poster_error)
         size(widthPx, heightPx)
         crossfade(true)
+        listener(
+            onError = { _, _ ->
+                view.setTag(R.id.poster_retry_action) {
+                    loadPoster(view, url, widthDp, heightDp, onPosterClick)
+                }
+            },
+            onSuccess = { _, _ ->
+                view.setTag(R.id.poster_retry_action, null)
+            }
+        )
+    }
+    if (onPosterClick != null) {
+        view.setOnClickListener {
+            @Suppress("UNCHECKED_CAST")
+            val retry = view.getTag(R.id.poster_retry_action) as? () -> Unit
+            if (retry != null) retry() else onPosterClick()
+        }
     }
 }
 
@@ -86,7 +118,7 @@ class UpdateAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val b = holder.binding
-        loadPoster(b.posterView, item.posterUrl)
+        loadPoster(b.posterView, item.posterUrl, onPosterClick = { onClick(item) })
         b.titleView.text = item.title ?: item.animeTitle ?: ""
         b.statusTextUpdate.text = item.animeStatus ?: ""
         b.statusTextUpdate.visibility =
@@ -136,10 +168,10 @@ class MostViewAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
-        loadPoster(b.posterViewMostview, anime.posterUrl)
+        loadPoster(b.posterViewMostview, anime.posterUrl, onPosterClick = { onClick(anime) })
         b.titleViewMostview.text = anime.displayTitle
         b.textView4maxview.text =
-            if (anime.views > 0) "👁 ${formatViews(anime.views)}" else ""
+            if (anime.views > 0) "${formatViews(anime.views)} view" else ""
         b.textView4maxview.visibility =
             if (anime.views > 0) View.VISIBLE else View.GONE
         b.statusTextmost.text = anime.status ?: ""
@@ -182,7 +214,7 @@ class BrowseGridAdapter(
         val anime = items[position]
         val b = holder.binding
         // Poster grid Jelajahi: 100×150dp (item_browse_grid.xml, default).
-        loadPoster(b.posterViewBrows, anime.posterUrl)
+        loadPoster(b.posterViewBrows, anime.posterUrl, onPosterClick = { onClick(anime) })
         b.titleViewBrows.text = anime.displayTitle
     }
 
@@ -225,7 +257,7 @@ class BrowseListAdapter(
         val anime = items[position]
         val b = holder.binding
         // Poster list Jelajahi: 105×135dp (item_browse_list.xml).
-        loadPoster(b.posterViewBrows, anime.posterUrl, widthDp = 105, heightDp = 135)
+        loadPoster(b.posterViewBrows, anime.posterUrl, widthDp = 105, heightDp = 135, onPosterClick = { onClick(anime) })
         b.titleViewBrows.text = anime.displayTitle
         b.statusText.text = anime.status ?: ""
         b.maxepisode.visibility = View.GONE
@@ -269,7 +301,7 @@ class SlideAdapter(
         // lebar penuh, bukan ukuran poster kartu.
         loadPoster(
             holder.binding.slideImage, anime.posterUrl,
-            widthDp = -1, heightDp = 260
+            widthDp = -1, heightDp = 260, onPosterClick = { onClick(anime) }
         )
         holder.binding.slideNameTXT.text = anime.displayTitle
     }

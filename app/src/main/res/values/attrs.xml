@@ -4,4 +4,7 @@
     <attr name="bgColor" format="color" />
     <attr name="textColor" format="color" />
     <attr name="metaTextColor" format="color" />
+    <!-- v2.0.7 #2: overlay AppBar sadar-tema — AppTheme menunjuk overlay
+         terang, DarkTheme menunjuk overlay gelap (AppTheme.AppBarOverlay.Dark). -->
+    <attr name="appBarOverlay" format="reference" />
 </resources>

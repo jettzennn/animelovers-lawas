@@ -14,6 +14,7 @@ import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
@@ -57,7 +58,7 @@ class EpisodeActivity : BaseActivity() {
         animePoster = intent.getStringExtra(Constants.EXTRA_POSTER).orEmpty()
 
         binding.toolbarEpisodeLainnya.title = animeTitle
-        binding.toolbarEpisodeLainnya.setNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
+        binding.toolbarEpisodeLainnya.setTintedNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
         binding.toolbarEpisodeLainnya.setNavigationOnClickListener { finish() }
 
         adapter = EpisodeAdapter { episode ->

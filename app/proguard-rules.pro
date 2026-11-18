@@ -3,6 +3,11 @@
 # Yang ditahan di sini hanya yang dipakai lewat refleksi / serialisasi nama.
 
 # Model API (Gson membaca nama field) — jangan obfuscate nama field model.
+# Model Samehadaku (v2.0.7 item 16: SamehadakuSearchData,
+# SamehadakuSearchItem, SamehadakuEpisodeData, SamehadakuEpisodeServersItem
+# di data/model) tercakup wildcard data.** di bawah — parse-nya memakai
+# TypeToken.getParameterized (bukan subclass TypeToken anonim), sama
+# seperti SankaRepository (lapis kedua v2.0.4).
 -keepclassmembers class animelovers.rebornhd.data.model.** { *; }
 -keepclassmembers class animelovers.rebornhd.data.api.** { *; }
 

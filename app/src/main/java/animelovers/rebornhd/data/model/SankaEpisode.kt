@@ -88,6 +88,9 @@ data class SankaDetailEpisode(
 //  bila ada, isinya HALAMAN unduhan (acefile/gofile/pixeldrain /u/),
 //  BUKAN URL file langsung — jangan dipakai untuk unduh),
 //  anime: SankaAnime (ringkas), episode_list[]}
+
+// Model Samehadaku ada di SamehadakuModels.kt (bukan di sini —
+// deklarasi ganda di dua file membuat Gradle gagal kompilasi, C-1).
 data class SankaEpisodeData(
     @SerializedName("id") val idRaw: JsonElement? = null,
     @SerializedName("title") val title: String? = null,

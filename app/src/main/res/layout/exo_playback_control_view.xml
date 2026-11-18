@@ -82,7 +82,7 @@
         android:gravity="center"
         android:orientation="horizontal"
         android:id="@+id/play_pause_layout"
-        android:paddingTop="4dp"
+        android:paddingTop="0dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="30dp"
@@ -273,11 +273,18 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- Menu kanan (resolusi / unduh / volume / Putar Otomatis) — v2.0.7 #7:
+         TETAP di menu kanan seperti aslinya; yang diperbaiki hanya JARAK ke
+         poster: margin vertikal item 5dp→2dp + margin bawah wadah 5dp→0dp
+         + padding atas baris play 4dp→0dp (tumpukan menu lebih pendek
+         ~33dp). Di landscape 360dp, ikon HD sebelumnya menyentuh tepi
+         bawah poster saat tombol unduh tampil (4 item); kini ada jarak
+         ~15dp. Posisi menu TIDAK dipindah. -->
     <LinearLayout
         android:orientation="horizontal"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="5dp"
+        android:layout_marginBottom="0dp"
         android:layout_above="@+id/play_pause_layout"
         android:layout_marginEnd="40dp"
         android:layout_alignParentEnd="true">
@@ -294,9 +301,9 @@
                 android:layout_width="25dp"
                 android:layout_height="25dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="2dp"
                 android:layout_marginRight="5dp"
-                android:layout_marginBottom="5dp"
+                android:layout_marginBottom="2dp"
                 app:srcCompat="@drawable/hd_icon" />
 
             <!-- Unduh (v2.0.5, D1): ganti jalan masuk lama lewat dialog mode.
@@ -309,9 +316,9 @@
                 android:layout_width="25dp"
                 android:layout_height="25dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="2dp"
                 android:layout_marginRight="5dp"
-                android:layout_marginBottom="5dp"
+                android:layout_marginBottom="2dp"
                 android:contentDescription="@string/unduh"
                 app:srcCompat="@drawable/download_new" />
 
@@ -320,9 +327,9 @@
                 android:layout_width="25dp"
                 android:layout_height="25dp"
                 android:layout_marginLeft="5dp"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="2dp"
                 android:layout_marginRight="5dp"
-                android:layout_marginBottom="5dp"
+                android:layout_marginBottom="2dp"
                 app:srcCompat="@drawable/volume" />
 
             <TextView
@@ -334,9 +341,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="5dp"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="2dp"
                 android:layout_marginRight="5dp"
-                android:layout_marginBottom="5dp"
+                android:layout_marginBottom="2dp"
                 android:text="@string/putar_otomatis" />
         </LinearLayout>
     </LinearLayout>

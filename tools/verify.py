@@ -69,6 +69,11 @@ for f in (RES / "values").glob("*.xml"):
             defined["style"].add(name)
         elif el.tag == "attr":
             defined["attr"].add(name)
+        elif el.tag == "item" and el.get("type") == "id":
+            # ID non-layout (res/values/ids.xml) — kunci View.setTag,
+            # mis. poster_retry_action (v2.0.7 #1). aapt tetap
+            # membangkitkan R.id untuk <item type="id">.
+            defined["id"].add(name)
 
 # file-based resources
 for kind in ("drawable", "mipmap", "layout", "menu", "xml"):
@@ -194,11 +199,72 @@ for layout in sorted(defined["layout"] - used_layouts):
 # ---------- 7. Kotlin: keseimbangan kurung (string/komentar dibuang) ----------
 
 def strip_kotlin(text: str) -> str:
-    text = re.sub(r'"(?:\\.|[^"\\])*"(?:\s*\n\s*"(?:\\.|[^"\\])*")*', '""', text)
-    text = re.sub(r"'''(?:.|\n)*?'''", "''", text)
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return text
+    """Buang string/komentar/char literal Kotlin untuk cek §7/§10/§11.
+
+    Scanner satu-pass (bukan regex berlapis): regex berlapis salah
+    pasang bila string/komentar saling berisi — mis. `\"` di dalam
+    komentar baris `//` dibuka sebagai string dan menelan kode asli
+    sampai kutip berikutnya (bug yang menuduh PlayerRepository.kt
+    tak seimbang di v2.0.7 item 14–16), atau `//` di dalam URL
+    `https://…` memotong sisa baris. Aturan yang dipakai di sini:
+    `//` sampai newline, `/* … */` (tidak bersarang), string `"…"`
+    (escape backslash-x, tidak melewati newline), raw string (tiga
+    kutip ganda pembuka/penutup; tutup di kemunculan tiga kutip
+    pertama; isi boleh memuat kutip ganda tunggal), char literal
+    (petik tunggal, escape backslash-x). Newline dipertahankan supaya
+    nomor baris dan pola antar-baris tidak bergeser.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            if j < 0:
+                break
+            out.append(
+                "".join("\n" if ch == "\n" else " " for ch in text[i:j + 2])
+            )
+            i = j + 2
+            continue
+        if text.startswith('"""', i):
+            j = text.find('"""', i + 3)
+            if j < 0:
+                break
+            out.append('""')
+            i = j + 3
+            continue
+        if text[i] == '"':
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == '"' or text[i] == "\n":
+                    break
+                i += 1
+            if i < n and text[i] == '"':
+                i += 1
+            out.append('""')
+            continue
+        if text[i] == "'":
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == "'" or text[i] == "\n":
+                    break
+                i += 1
+            if i < n and text[i] == "'":
+                i += 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
 
 for f in kt_files:
     rel = f.relative_to(ROOT)
@@ -432,10 +498,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*11\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 11 untuk v2.0.6")
-if '"2.0.6"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.6"')
+if not re.search(r"versionCode\s*=\s*12\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 12 untuk v2.0.7")
+if '"2.0.7"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.7"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -715,6 +781,666 @@ if "putar_lewat_website" not in defined["string"]:
         "strings.xml: putar_lewat_website wajib ada (tombol eksplisit "
         "pindah ke website — v2.0.6 #1b)"
     )
+
+# ---------- 17. Gerbang v2.0.7 ----------
+# 17a. Poster v10→v11 (riset Q1): tulis ulang host HANYA di jalur poster —
+#      model posterUrl (3 getter) + loadPoster + pemuatan langsung
+#      (Riwayat/Detail/player). URL non-poster (token stream, dsb.) TIDAK
+#      boleh lewat fungsi ini.
+_model_kt = (
+    JAVA / "animelovers" / "rebornhd" / "data" / "model" / "SankaAnime.kt"
+).read_text(encoding="utf-8")
+if "fun rewritePosterHost" not in _model_kt:
+    errors.append(
+        "SankaAnime.kt: fungsi rewritePosterHost wajib ada "
+        "(tulis ulang v10.animekompi.sbs → v11 — v2.0.7 #1)"
+    )
+if _model_kt.count('rewritePosterHost(poster ?: image ?: cover ?: "")') != 3:
+    errors.append(
+        "SankaAnime.kt: ketiga getter posterUrl (SankaAnime / "
+        "SankaEpisodeItem / SankaDetail) wajib memakai rewritePosterHost "
+        "(v2.0.7 #1)"
+    )
+if '"v11.animekompi.sbs"' not in _model_kt:
+    errors.append(
+        "SankaAnime.kt: rewritePosterHost wajib menulis ulang ke "
+        "v11.animekompi.sbs (v2.0.7 #1)"
+    )
+if "rewritePosterHost(url)" not in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: loadPoster wajib menulis ulang URL poster "
+        "(lapis kedua — v2.0.7 #1)"
+    )
+_history_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "adapter" / "HistoryAdapters.kt"
+).read_text(encoding="utf-8")
+if "rewritePosterHost(item.idposter)" not in _history_kt:
+    errors.append(
+        "HistoryAdapters.kt: poster riwayat (baris lama di DB bisa v10) "
+        "wajib ditulis ulang saat dimuat (v2.0.7 #1)"
+    )
+if "rewritePosterHost(animePoster)" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: poster Detail wajib ditulis ulang "
+        "(v2.0.7 #1)"
+    )
+if "rewritePosterHost(animePoster)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: poster header player wajib ditulis ulang "
+        "(v2.0.7 #1)"
+    )
+
+# 17b. Retry poster terbatas 1–2× + ketuk-coba-lagi (v2.0.7 #1).
+if "PosterRetryInterceptor" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: PosterRetryInterceptor wajib ada "
+        "(Coil 2.5.0 tidak retry otomatis — v2.0.7 #1)"
+    )
+if "MAX_POSTER_RETRIES = 1" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: retry poster wajib terbatas 1× "
+        "(v2.0.7 #1 — jangan menahan antrean)"
+    )
+if "addInterceptor(PosterRetryInterceptor())" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: interceptor retry wajib dipasang di "
+        "OkHttpClient Coil (v2.0.7 #1)"
+    )
+if "poster_retry_action" not in defined["id"]:
+    errors.append(
+        "res/values/ids.xml: id poster_retry_action wajib ada "
+        "(kunci tag ketuk-coba-lagi — v2.0.7 #1)"
+    )
+if "onPosterClick" not in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: loadPoster wajib mendukung ketuk-coba-lagi "
+        "(onPosterClick — v2.0.7 #1)"
+    )
+
+# 17c. Prioritas poster terlihat (v2.0.7 #1): maxRequestsPerHost Coil 2–3.
+if "maxRequestsPerHost = 3" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: maxRequestsPerHost Coil wajib 3 "
+        "(poster terlihat selesai dulu — v2.0.7 #1)"
+    )
+
+# 17d. Mode gelap sadar-tema (v2.0.7 #2): colorControlNormal putih di
+#      DarkTheme + AppBarOverlay sadar-tema.
+_themes_xml = (RES / "values" / "themes.xml").read_text(encoding="utf-8")
+if 'name="colorControlNormal">@color/putih' not in _themes_xml:
+    errors.append(
+        "themes.xml: DarkTheme wajib menimpa colorControlNormal ke putih "
+        "(akar ikon hitam di mode gelap — v2.0.7 #2)"
+    )
+if "AppTheme.AppBarOverlay.Dark" not in defined["style"]:
+    errors.append(
+        "themes.xml: style AppTheme.AppBarOverlay.Dark wajib ada "
+        "(overlay AppBar gelap — v2.0.7 #2)"
+    )
+if "appBarOverlay" not in defined["attr"]:
+    errors.append(
+        "attrs.xml: attr appBarOverlay wajib ada "
+        "(overlay AppBar sadar-tema — v2.0.7 #2)"
+    )
+_browse_xml = (
+    RES / "layout" / "fragment_browse.xml"
+).read_text(encoding="utf-8")
+if "?attr/appBarOverlay" not in _browse_xml:
+    errors.append(
+        "fragment_browse.xml: AppBarLayout wajib memakai "
+        "?attr/appBarOverlay (bukan satu style mati — v2.0.7 #2)"
+    )
+
+# 17e. Panah kembali di-tint ?attr/colorControlNormal (v2.0.7 #2):
+#      helper + dipakai 3 layar; tidak boleh lagi setNavigationIcon
+#      dengan drawable hitam keras tanpa tint.
+_extensions_kt = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "Extensions.kt"
+).read_text(encoding="utf-8")
+if "fun Toolbar.setTintedNavigationIcon" not in _extensions_kt:
+    errors.append(
+        "Extensions.kt: helper Toolbar.setTintedNavigationIcon wajib ada "
+        "(panah kembali di-tint tema aktif — v2.0.7 #2)"
+    )
+if "colorControlNormal" not in _extensions_kt:
+    errors.append(
+        "Extensions.kt: tint panah kembali wajib dari "
+        "?attr/colorControlNormal (v2.0.7 #2)"
+    )
+_episode_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "episode" / "EpisodeActivity.kt"
+).read_text(encoding="utf-8")
+_lainnya_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "episode" / "LainnyaActivity.kt"
+).read_text(encoding="utf-8")
+for _name, _text in (
+    ("EpisodeActivity.kt", _episode_kt),
+    ("LainnyaActivity.kt", _lainnya_kt),
+    ("SettingActivity.kt", _setting_kt),
+):
+    if "setTintedNavigationIcon(R.drawable.ic_arrow_back_black_24dp)" not in _text:
+        errors.append(
+            f"{_name}: panah kembali toolbar wajib memakai "
+            "setTintedNavigationIcon (v2.0.7 #2)"
+        )
+    if "setNavigationIcon(R.drawable.ic_arrow_back_black_24dp)" in _text:
+        errors.append(
+            f"{_name}: setNavigationIcon dengan drawable hitam keras "
+            "dilarang — pakai setTintedNavigationIcon (v2.0.7 #2)"
+        )
+
+# 17f. Cache home di disk (v2.0.7 #3): TTL 10 menit + render-dari-disk
+#      di HomeFragment + fetch segar paksa (homeFresh).
+if "homeDiskFile" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: homeDiskFile wajib ada "
+        "(cache disk Beranda — v2.0.7 #3)"
+    )
+if "fun homeDiskCached()" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: homeDiskCached() wajib ada "
+        "(baca cache disk tanpa jaringan — v2.0.7 #3)"
+    )
+if "fun homeFresh()" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: homeFresh() wajib ada "
+        "(fetch segar paksa setelah render dari disk — v2.0.7 #3)"
+    )
+if "home_cache.json" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: file cache disk wajib home_cache.json di "
+        "filesDir (v2.0.7 #3)"
+    )
+if "homeDiskCached()" not in _home_kt:
+    errors.append(
+        "HomeFragment.kt: load() wajib render dari homeDiskCached() bila "
+        "memori kosong (bukaan dingin — v2.0.7 #3)"
+    )
+if "homeFresh()" not in _home_kt:
+    errors.append(
+        "HomeFragment.kt: load() wajib memanggil homeFresh() bila data "
+        "tampil bukan dari memori segar (v2.0.7 #3)"
+    )
+
+# 17g. Visibility-gating poster Jelajahi (v2.0.7 #4): muat pertama hanya
+#      saat tab dipilih (onResume + penanda sekali); offscreenPageLimit
+#      TETAP 10.
+_browse_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "browse" / "BrowseFragment.kt"
+).read_text(encoding="utf-8")
+if "hasLoadedOnce" not in _browse_kt:
+    errors.append(
+        "BrowseFragment.kt: penanda hasLoadedOnce wajib ada "
+        "(muat pertama sekali saja — v2.0.7 #4)"
+    )
+if "override fun onResume()" not in _browse_kt:
+    errors.append(
+        "BrowseFragment.kt: muat pertama wajib dari onResume "
+        "(tab dipilih — v2.0.7 #4)"
+    )
+if "if (!hasLoadedOnce)" not in _browse_kt:
+    errors.append(
+        "BrowseFragment.kt: onResume wajib menjaga muat pertama dengan "
+        "hasLoadedOnce (v2.0.7 #4)"
+    )
+_main_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "MainActivity.kt"
+).read_text(encoding="utf-8")
+if "offscreenPageLimit = 10" not in _main_kt:
+    errors.append(
+        "MainActivity.kt: offscreenPageLimit wajib tetap 10 "
+        "(visibility-gating bukan lewat limit — v2.0.7 #4)"
+    )
+
+# 17h. Badge jumlah tontonan tanpa emoji mata (v2.0.7 #5): format "N view".
+if "👁" in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: emoji mata 👁 dilarang di badge jumlah tonton "
+        "— aslinya '31.890.685 view' tanpa emoji (v2.0.7 #5)"
+    )
+if '"${formatViews(anime.views)} view"' not in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: badge Terlaris wajib format "
+        "'{angka} view' (v2.0.7 #5)"
+    )
+
+# 17i. Play/pause satu tombol bergantian (v2.0.7 #6): hanya satu tampil
+#      per keadaan — dikelola eksplisit, bukan mengandalkan PlayerView.
+if "fun updatePlayPauseButton()" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: updatePlayPauseButton wajib ada "
+        "(satu tombol play/pause bergantian — v2.0.7 #6)"
+    )
+if "R.id.exo_play" not in _video_kt or "R.id.exo_pause" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: updatePlayPauseButton wajib mengatur "
+        "exo_play + exo_pause (v2.0.7 #6)"
+    )
+if "onPlayWhenReadyChanged" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: onPlayWhenReadyChanged wajib ada "
+        "(tombol ikut berubah saat play/pause — v2.0.7 #6)"
+    )
+
+# 17j. Tombol HD tidak menabrak poster (v2.0.7 #7): tumpukan menu kanan
+#      dipendekkan (margin item 2dp + margin wadah 0dp) — posisi menu
+#      TIDAK dipindah (tetap menu_kanan seperti aslinya). Cek di
+#      exo_playback_control_view.xml (bukan activity_video.xml — menu
+#      kanan hidup di layout kontrol itu).
+_exo_xml = (
+    RES / "layout" / "exo_playback_control_view.xml"
+).read_text(encoding="utf-8")
+if "menu_kanan" not in _exo_xml:
+    errors.append(
+        "exo_playback_control_view.xml: menu_kanan wajib tetap ada "
+        "(ikon HD tetap di menu kanan — v2.0.7 #7)"
+    )
+if _exo_xml.count('android:layout_marginTop="2dp"') < 4:
+    errors.append(
+        "exo_playback_control_view.xml: margin vertikal item menu_kanan "
+        "wajib 2dp (4 item — jarak ke poster, v2.0.7 #7)"
+    )
+
+# 17k. Batasan keras TIDAK BOLEH berubah (re-assert v2.0.6 #7 + R8):
+#      throttle 1.400 ms + timeout transport 30 dtk + guard R8.
+if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
+    errors.append(
+        "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
+        "(v2.0.7 #8 tidak boleh mengecilkan throttle)"
+    )
+if not re.search(r"SANKA_READ_TIMEOUT_S\s*=\s*30", _constants):
+    errors.append(
+        "Constants.kt: SANKA_READ_TIMEOUT_S wajib tetap 30 "
+        "(v2.0.7 #8 tidak boleh menaikkan timeout transport)"
+    )
+_proguard = (ROOT / "app" / "proguard-rules.pro").read_text(encoding="utf-8")
+if "TypeToken" not in _proguard or "Signature" not in _proguard:
+    errors.append(
+        "proguard-rules.pro: guard R8 (keep TypeToken + Signature) wajib "
+        "tetap ada (v2.0.7 tidak boleh menyentuhnya)"
+    )
+
+# 17l. Geser horizontal kartu Episode Baru/Terlaris menggeser baris,
+#      bukan pindah tab (v2.0.7 #9): nested scrolling AKTIF di kedua baris.
+if _home_kt.count("isNestedScrollingEnabled = true") < 2:
+    errors.append(
+        "HomeFragment.kt: kedua RecyclerView horizontal (Episode Baru + "
+        "Terlaris) wajib isNestedScrollingEnabled = true (v2.0.7 #9)"
+    )
+if "isNestedScrollingEnabled = false" in _home_kt:
+    errors.append(
+        "HomeFragment.kt: isNestedScrollingEnabled = false dilarang di "
+        "baris horizontal — ViewPager2 akan mencegat geser dan pindah tab "
+        "(v2.0.7 #9)"
+    )
+
+# 17m. Tidak ada judul ber-genre Donghua tampil di Beranda/Jelajahi/
+#      pencarian (v2.0.7 #10): filter di SankaRepository, tanpa pengalih.
+if "fun isDonghua" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: fungsi isDonghua wajib ada "
+        "(sembunyikan donghua total — v2.0.7 #10)"
+    )
+if "isDonghua(it)" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: visibleAnimes/visibleEpisodes wajib "
+        "menyaring isDonghua (v2.0.7 #10)"
+    )
+
+# 17n. Deskripsi tampil di layar Detail (v2.0.7 #11): sinopsis Sanka
+#      penuh (layout tanpa maxLines) + baris disembunyikan bila kosong.
+#      Sumber tambahan berbahasa Inggris (MAL/Jikan) butuh keputusan
+#      Faygo — dicatat sebagai keterbatasan sumber, bukan bug aplikasi.
+_detail_xml = (
+    RES / "layout" / "activity_detail.xml"
+).read_text(encoding="utf-8")
+_desc_block = _detail_xml.split("descDetailView", 1)[1].split("/>", 1)[0] \
+    if "descDetailView" in _detail_xml else ""
+if "maxLines" in _desc_block:
+    errors.append(
+        "activity_detail.xml: descDetailView tidak boleh punya maxLines "
+        "— sinopsis wajib tampil penuh (v2.0.7 #11)"
+    )
+if "descDetailView" not in _detail_kt or "synopsis" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: descDetailView wajib diisi dari sinopsis Sanka "
+        "(v2.0.7 #11)"
+    )
+
+# 17o. Hanya SATU spinner loading di player (v2.0.7 #12): spinner bawaan
+#      PlayerView dimatikan; yang tampil ProgressBar + teks aplikasi.
+_activity_video_xml = (
+    RES / "layout" / "activity_video.xml"
+).read_text(encoding="utf-8")
+if 'app:show_buffering="never"' not in _activity_video_xml:
+    errors.append(
+        "activity_video.xml: PlayerView wajib show_buffering=\"never\" "
+        "(satu spinner saja — v2.0.7 #12)"
+    )
+if 'app:show_buffering="when_playing"' in _activity_video_xml:
+    errors.append(
+        "activity_video.xml: show_buffering=\"when_playing\" dilarang — "
+        "spinner ganda dengan ProgressBar aplikasi (v2.0.7 #12)"
+    )
+if "showInitialLoading" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: showInitialLoading wajib ada "
+        "(indikator loading aplikasi yang dipertahankan — v2.0.7 #12)"
+    )
+
+# 17p. Pencarian: seri utama paling atas + sequel berurutan + Movie
+#      terakhir (v2.0.7 #13): nomor musim dari judul + ONA/OVA sebelum Movie.
+if "seasonNumberFor" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: seasonNumberFor wajib ada "
+        "(nomor musim dari judul — v2.0.7 #13)"
+    )
+if '"ona", "ova"' not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: sortSearchResults wajib menaruh ONA/OVA "
+        "sebelum Movie (v2.0.7 #13)"
+    )
+if '"movie" -> 4' not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: sortSearchResults wajib menaruh Movie "
+        "terakhir (grup 4 — v2.0.7 #13)"
+    )
+
+# 17q. D-player (keputusan Faygo 05:09 WIB): SEMUA video (TV, Movie,
+#      Special, OVA/ONA) diputar di kontrol player aplikasi sendiri
+#      (Media3) — TANPA pembedaan jenis. isMovie hanya untuk label +
+#      perilaku ENDED, BUKAN pemilihan player; PlayerRepository tidak
+#      mengenal isMovie sama sekali. Dialog fallback "Putar lewat
+#      website?" tetap ada (pengecualian untuk episode tanpa file direct).
+_player_repo_kt = (
+    JAVA / "animelovers" / "rebornhd" / "data" / "repo" / "PlayerRepository.kt"
+).read_text(encoding="utf-8")
+if "isMovie" in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: isMovie dilarang di sini — pemilihan "
+        "kandidat tidak boleh membedakan jenis anime (D-player)"
+    )
+_pick_match = re.search(
+    r"private fun pickStartCandidate.*?\n    \}", _video_kt, re.DOTALL
+)
+if _pick_match is None or "isMovie" in _pick_match.group(0):
+    errors.append(
+        "VideoPlayActivity.kt: pickStartCandidate tidak boleh memakai "
+        "isMovie — pemilihan kandidat hanya dari pref HD/SD (D-player)"
+    )
+_play_match = re.search(
+    r"private fun playCandidate.*?\n    \}", _video_kt, re.DOTALL
+)
+if _play_match is None or "isMovie" in _play_match.group(0):
+    errors.append(
+        "VideoPlayActivity.kt: playCandidate tidak boleh memakai isMovie "
+        "— semua jenis diputar di Media3 yang sama (D-player)"
+    )
+
+# ---------- 18. Gerbang v2.0.7 item 14–16 — fallback lintas-sumber ----------
+# (PRD v2.0.8 §18a–§18i + §18o + §18p; item 1–3 dipindah ke v2.0.7
+# atas keputusan Faygo 05:31 WIB — versi TETAP 12 / "2.0.7".)
+_samehadaku_kt = (
+    JAVA / "animelovers" / "rebornhd" / "data" / "repo" / "SamehadakuRepository.kt"
+).read_text(encoding="utf-8")
+_proguard = (ROOT / "app" / "proguard-rules.pro").read_text(encoding="utf-8")
+_source_kt = (
+    JAVA / "animelovers" / "rebornhd" / "data" / "model" / "SankaSource.kt"
+).read_text(encoding="utf-8")
+_all_kt = ""
+for _f in (JAVA).rglob("*.kt"):
+    _all_kt += _f.read_text(encoding="utf-8", errors="replace") + "\n"
+
+# 18a. Rantai fallback ada — ekstraksi ok.ru + adapter Samehadaku +
+#      pemakaian keduanya di rantai kandidat setelah lapis Animekompi,
+#      sebelum dialog.
+if "fun extractOkRuUrls" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: extractOkRuUrls wajib ada "
+        "(ekstraksi tier ok.ru — v2.0.7 item 15)"
+    )
+if "class SamehadakuRepository" not in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: adapter Samehadaku wajib ada "
+        "(v2.0.7 item 16)"
+    )
+if "fun fetchOkRuCandidates" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: fetchOkRuCandidates wajib ada "
+        "(lapis 2 — v2.0.7 item 15)"
+    )
+if "fun fetchSamehadakuCandidates" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: fetchSamehadakuCandidates wajib ada "
+        "(lapis 3 — v2.0.7 item 16)"
+    )
+if "fetchOkRuCandidates(" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: rantai fallback wajib memanggil "
+        "fetchOkRuCandidates sebelum dialog embed (v2.0.7 item 15)"
+    )
+if "fetchSamehadakuCandidates(" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: rantai fallback wajib memanggil "
+        "fetchSamehadakuCandidates sebelum dialog embed (v2.0.7 item 16)"
+    )
+
+# 18b. API Donghua TIDAK dipanggil — 0 kemunculan `anime/donghua/` di kode
+#      (lapis Donghua tidak aktif — D-donghua).
+if "anime/donghua/" in _all_kt:
+    errors.append(
+        "Kode: anime/donghua/ dilarang — lapis Donghua TIDAK AKTIF "
+        "(v2.0.7 item 14–16; aktifkan hanya bila donghua dibuka lagi)"
+    )
+
+# 18c. Pencocokan episode antar sumber memakai (judul ternormalisasi +
+#      season + nomor episode); tidak ada pencocokan slug mentah;
+#      bila ragu → dialog (jalur "jangan tebak" ada).
+for _fn in ("fun normalizeSeriesTitle", "fun seasonNumberFromTitle",
+            "fun episodeNumberFromSearchItem", "fun matchEpisode"):
+    if _fn not in _samehadaku_kt:
+        errors.append(
+            f"SamehadakuRepository.kt: {_fn} wajib ada "
+            "(pencocokan judul + season + episode — v2.0.7 item 16)"
+        )
+if "hits.size == 1" not in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: matchEpisode wajib memakai hasil hanya "
+        "bila TEPAT SATU kandidat cocok (bila ragu JANGAN tebak — "
+        "v2.0.7 item 16)"
+    )
+
+# 18d. Samehadaku 500 = "tidak ada di sumber ini" — lanjut tanpa retry,
+#      tanpa error ke pengguna.
+if "SamehadakuNotFoundException" not in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: SamehadakuNotFoundException wajib ada "
+        "(500 = judul tidak ada — v2.0.7 item 16)"
+    )
+if "statusCode == 500" not in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: HTTP 500 Samehadaku wajib dipetakan ke "
+        "\"tidak ada\" (bukan error — v2.0.7 item 16)"
+    )
+
+# 18e. Ekstraksi ok.ru — host terkunci `ok.ru` videoembed; tier hd → sd;
+#      URL tidak disimpan di DB/riwayat; label kualitas jujur dari tier.
+if "fun isOkRuEmbed" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: isOkRuEmbed wajib ada (host terkunci ok.ru "
+        "videoembed — v2.0.7 item 15)"
+    )
+if '"/videoembed/"' not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: embed ok.ru wajib path /videoembed/ "
+        "(v2.0.7 item 15)"
+    )
+if 'urls["hd"]' not in _player_repo_kt or 'urls["sd"]' not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: fetchOkRuCandidates wajib memakai tier "
+        "hd → sd (v2.0.7 item 15)"
+    )
+if "OKRU_720" not in _source_kt or "OKRU_360" not in _source_kt:
+    errors.append(
+        "SankaSource.kt: PlayableKind OKRU_720/OKRU_360 wajib ada "
+        "(label jujur dari tier — v2.0.7 item 15)"
+    )
+
+# 18f. Samehadaku Blogger — pakai ulang extractBloggerUrls (itag 22 → 18);
+#      adapter sendiri; model baru tercakup guard R8.
+if "fetchBloggerUrls(bloggerUrl)" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: fetchSamehadakuCandidates wajib memakai "
+        "ulang fetchBloggerUrls/extractBloggerUrls (itag 22 → 18 — "
+        "v2.0.7 item 16)"
+    )
+if "SamehadakuSearchData" not in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: model SamehadakuSearchData wajib dipakai "
+        "(adapter sendiri — v2.0.7 item 16)"
+    )
+if "animelovers.rebornhd.data.**" not in _proguard:
+    errors.append(
+        "proguard-rules.pro: wildcard data.** wajib ada — model "
+        "Samehadaku (data/model) tercakup guard R8 (v2.0.7 item 16)"
+    )
+
+# 18g. Rantai MALAS — ok.ru/Samehadaku tidak di-fetch bila lapis 1 sukses.
+if "hasLayer1" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: resolve wajib malas — ok.ru hanya di-fetch "
+        "bila lapis 1 kosong (hasLayer1 — v2.0.7 item 17)"
+    )
+if "hasLayer1 || hasLayer2" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: resolve wajib malas — Samehadaku hanya "
+        "di-fetch bila lapis 1–2 kosong (v2.0.7 item 17)"
+    )
+if "tryLazyLayer(nextIndex)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: lapis malas wajib dicoba lewat "
+        "tryLazyLayer hanya sebelum jatuh ke embed (v2.0.7 item 17)"
+    )
+
+# 18h. D-player — isMovie 0 kemunculan di PlayerRepository / adapter baru /
+#      pickStartCandidate / playCandidate (perluasan §17q ke lapis baru).
+if "isMovie" in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: isMovie dilarang di sini — pemilihan "
+        "kandidat tidak boleh membedakan jenis anime (D-player)"
+    )
+if "isMovie" in _samehadaku_kt:
+    errors.append(
+        "SamehadakuRepository.kt: isMovie dilarang di sini — adapter "
+        "tidak boleh membedakan jenis anime (D-player)"
+    )
+
+# 18i. Dialog "Putar lewat website?" tetap jalan terakhir; tidak ada pesan
+#      "Video tidak tersedia" sebagai fallback (grep string itu = 0 di
+#      kode + res/).
+if "showWebViewFallbackDialog" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: dialog fallback WebView wajib ada "
+        "(jalan terakhir — v2.0.7 item 17)"
+    )
+if "Video tidak tersedia" in _all_kt:
+    errors.append(
+        'Kode: string "Video tidak tersedia" dilarang — ditolak Faygo '
+        "sebagai solusi (v2.0.7 item 17)"
+    )
+_res_text = ""
+for _f in (RES).rglob("*.xml"):
+    _res_text += _f.read_text(encoding="utf-8", errors="replace") + "\n"
+if "Video tidak tersedia" in _res_text:
+    errors.append(
+        'res/: string "Video tidak tersedia" dilarang — ditolak Faygo '
+        "sebagai solusi (v2.0.7 item 17)"
+    )
+
+# 18o. Batasan keras TIDAK BOLEH berubah (re-assert §13d/§16f/§17k) +
+#      versi TETAP 12 / "2.0.7" (item 14–16 masuk v2.0.7, BUKAN 2.0.8).
+if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
+    errors.append(
+        "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
+        "(v2.0.7 item 14–16 tidak boleh mengecilkan throttle)"
+    )
+if not re.search(r"SANKA_READ_TIMEOUT_S\s*=\s*30L", _constants):
+    errors.append(
+        "Constants.kt: SANKA_READ_TIMEOUT_S wajib tetap 30L "
+        "(v2.0.7 item 14–16 tidak boleh mengubah timeout transport)"
+    )
+if "-keepattributes Signature" not in _proguard:
+    errors.append(
+        "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
+        "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
+    )
+if not re.search(r"versionCode\s*=\s*12\b", _app_gradle):
+    errors.append(
+        "app/build.gradle.kts: versionCode wajib TETAP 12 — item 14–16 "
+        "masuk v2.0.7, bukan 2.0.8"
+    )
+if '"2.0.7"' not in _app_gradle:
+    errors.append(
+        'app/build.gradle.kts: versionName wajib TETAP "2.0.7"'
+    )
+if re.search(r"versionCode\s*=\s*13\b", _app_gradle):
+    errors.append(
+        "app/build.gradle.kts: versionCode 13 dilarang di v2.0.7 — "
+        "itu versi v2.0.8"
+    )
+
+# 18p. Komentar diagnosis #8 menyebut 451 di-retry 8× (~20 dtk/kandidat)
+#      — kata "tanpa retry" untuk 451 tidak ada lagi (koreksi O-1 Cari Bug).
+if "DI-retry 8" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: komentar diagnosis wajib menyebut HTTP 451 "
+        "DI-retry 8× (koreksi O-1 — v2.0.7 item 17)"
+    )
+if "gagal cepat tanpa retry" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: frasa \"gagal cepat tanpa retry\" untuk 451 "
+        "dilarang — 451 DI-retry 8× (koreksi O-1)"
+    )
+
+# 18q. SATU nama top-level = SATU definisi (H-1/C-1 — build gabungan
+#      v2.0.7 sempat tidak bisa dikompilasi karena tiga class model
+#      Samehadaku dideklarasikan di dua file paket yang sama; harness
+#      tidak mengkompilasi file keduanya dan verify.py tidak punya gate
+#      ini). Dua deklarasi top-level dengan nama sama di paket yang sama
+#      SELALU error kompilasi Kotlin — jadi gate ini tidak bisa
+#      false-positive pada kode yang benar. Cakupan: seluruh
+#      app/src/main/java (persis yang dikompilasi Gradle). String,
+#      komentar, dan kelas bersarang dibuang (strip_kotlin + lacak
+#      kedalaman kurung per baris; hanya baris yang dimulai di
+#      kedalaman 0 yang dihitung).
+_decl_pattern = re.compile(
+    r"^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:public|internal|private|protected|open|abstract|sealed|"
+    r"data|inner|expect|actual|value|enum|annotation)\s+)*"
+    r"(?:class|interface|object)\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+_decl_package = re.compile(r"^\s*package\s+([\w.]+)", re.M)
+_declared: dict[tuple[str, str], list[str]] = {}
+for _f in kt_files:
+    _stripped = strip_kotlin(_f.read_text(encoding="utf-8"))
+    _pkg_m = _decl_package.search(_stripped)
+    _pkg = _pkg_m.group(1) if _pkg_m else ""
+    _depth = 0
+    for _lineno, _line in enumerate(_stripped.split("\n"), start=1):
+        if _depth == 0:
+            _m = _decl_pattern.match(_line)
+            if _m:
+                _declared.setdefault((_pkg, _m.group(1)), []).append(
+                    f"{_f.relative_to(ROOT)}:{_lineno}"
+                )
+        _depth += _line.count("{") - _line.count("}")
+for (_pkg, _name), _locs in sorted(_declared.items()):
+    if len(_locs) > 1:
+        errors.append(
+            f"Deklarasi top-level ganda: {_pkg}.{_name} didefinisikan "
+            f"{len(_locs)}× ({'; '.join(_locs)}) — satu nama, satu "
+            f"definisi (H-1/C-1 v2.0.7)"
+        )
 
 # ---------- Laporan ----------
 

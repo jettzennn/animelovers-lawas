@@ -13,6 +13,30 @@ import com.google.gson.annotations.SerializedName
  * membaca keduanya.
  */
 
+// ---- Poster CDN (v2.0.7 #1) ----
+//
+// Server menjawab poster di host v10.animekompi.sbs, lalu me-redirect 301
+// ke v11.animekompi.sbs — 1 round-trip + jabat tangan TLS ekstra PER
+// POSTER (riset v2.0.7 Q1: 62/63 URL Beranda pakai v10). Tulis ulang
+// hostnya di sisi klien, di posterUrl — semua pemuatan poster mengalir
+// lewat sini (adapter, Detail, player, riwayat).
+// HANYA host persis "v10.animekompi.sbs" yang ditulis ulang; URL lain
+// (token stream, s4.anilist.co, dsb.) TIDAK PERNAH disentuh.
+fun rewritePosterHost(url: String): String {
+    if (!url.contains("v10.animekompi.sbs")) return url
+    return try {
+        val uri = java.net.URI(url)
+        if (uri.host?.lowercase() == "v10.animekompi.sbs") {
+            java.net.URI(
+                uri.scheme, uri.userInfo, "v11.animekompi.sbs",
+                uri.port, uri.path, uri.query, uri.fragment
+            ).toString()
+        } else url
+    } catch (e: Exception) {
+        url
+    }
+}
+
 // ---- Amplop + paginasi ----
 
 data class SankaEnvelope<T>(
@@ -69,7 +93,7 @@ data class SankaAnime(
     val id: Int get() = idRaw.asLenientInt(0)
 
     /** Poster: ketiga kunci berisi URL yang sama — pakai yang tersedia. */
-    val posterUrl: String get() = poster ?: image ?: cover ?: ""
+    val posterUrl: String get() = rewritePosterHost(poster ?: image ?: cover ?: "")
 
     val ratingText: String get() = ratingRaw.asLenientRatingText()
     val ratingValue: Double? get() = ratingRaw.asLenientDouble()
@@ -141,7 +165,7 @@ data class SankaEpisodeItem(
     @SerializedName("released_at") val releasedAt: String? = null
 ) {
     val episodeNumber: Int get() = episodeRaw.asLenientInt(0)
-    val posterUrl: String get() = poster ?: image ?: cover ?: ""
+    val posterUrl: String get() = rewritePosterHost(poster ?: image ?: cover ?: "")
 }
 
 // ---- Detail anime ----
@@ -173,7 +197,7 @@ data class SankaDetail(
     @SerializedName("trailer") val trailer: String? = null,
     @SerializedName("uncensored") val uncensored: Boolean = false
 ) {
-    val posterUrl: String get() = poster ?: image ?: cover ?: ""
+    val posterUrl: String get() = rewritePosterHost(poster ?: image ?: cover ?: "")
     val ratingText: String get() = ratingRaw.asLenientRatingText()
     val views: Int get() = viewsRaw.asLenientInt(0)
     val year: Int get() = yearRaw.asLenientInt(0)

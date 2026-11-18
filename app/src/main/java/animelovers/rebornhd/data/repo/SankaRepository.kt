@@ -20,9 +20,13 @@ import animelovers.rebornhd.util.Constants
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
 import java.lang.reflect.Type
 import java.util.concurrent.ConcurrentHashMap
@@ -104,10 +108,24 @@ internal fun encodeSegment(value: String): String {
 class SankaRepository(
     private val transport: SankaTransport,
     private val videoDao: VideoDao,
-    private val favoriteDao: FavoriteDao
+    private val favoriteDao: FavoriteDao,
+    /**
+     * File cache disk Beranda (v2.0.7 #3) — null = tanpa disk (dipakai
+     * suite uji). Di aplikasi diisi AnimeloversApp dengan
+     * File(filesDir, "home_cache.json"). Isi: JSON mentah /home.
+     * TTL = TTL_HOME_MS (10 menit), diukur dari lastModified file.
+     */
+    private val homeDiskFile: File? = null
 ) {
 
     private val gson = Gson()
+
+    /**
+     * Transport yang sama untuk adapter Samehadaku (v2.0.7 item 16) —
+     * throttle 1.400 ms + Mutex + timeout 30 dtk berlaku untuk semua
+     * sumber; Samehadaku TIDAK membawa client sendiri.
+     */
+    fun samehadakuTransport(): SankaTransport = transport
 
     // ---- Cache + dedup ----
 
@@ -136,15 +154,19 @@ class SankaRepository(
         const val TTL_DETAIL_MS = 10 * 60 * 1000L
 
         /**
-         * Sortir hasil pencarian client-side (v2.0.6 #3) — urutan server
-         * BUKAN relevansi (live "one piece": judul utama "One Piece" (TV)
-         * ada di posisi 19 dari 24, di atasnya 16 Movie + 5 Special).
+         * Sortir hasil pencarian client-side (v2.0.6 #3, diperkuat v2.0.7
+         * #13) — urutan server BUKAN relevansi (live "one piece": judul
+         * utama "One Piece" (TV) ada di posisi 19 dari 24, di atasnya 16
+         * Movie + 5 Special; live "nanatsu no taizai": Season 2 SEBELUM
+         * Season 1, Movie di atas — urutan server acak).
          * Aturan STABIL (urutan relatif di dalam tiap kelompok
          * dipertahankan — sortedWith Kotlin stabil):
          *  1. judul persis sama dengan query (case-insensitive, trim);
-         *  2. type == "TV" (type kosong/tak dikenal ikut kelompok ini —
-         *     jangan turunkan data yang tidak dikenal);
-         *  3. type == "Special", lalu "Movie" → terakhir.
+         *  2. entri awal seri: "Season 1" / judul dasar — lewat nomor
+         *     musim (seasonNumberFor): Season 1, lalu 2, 3, 4…;
+         *  3. type: TV dulu, lalu Special, ONA/OVA, Movie terakhir;
+         *  4. seri TV lanjutan/spinoff lain (tanpa nomor musim yang
+         *     dikenali) setelahnya, urutan server dipertahankan.
          * Fungsi MURNI (bisa diuji unit tanpa Android/jaringan).
          */
         fun sortSearchResults(query: String, list: List<SankaAnime>): List<SankaAnime> {
@@ -154,13 +176,41 @@ class SankaRepository(
                     { if (it.displayTitle.trim().equals(q, ignoreCase = true)) 0 else 1 },
                     {
                         when (it.type?.trim()?.lowercase()) {
-                            "movie" -> 3
+                            "movie" -> 4
                             "special" -> 2
+                            "ona", "ova" -> 3
                             else -> 1 // "TV" + type kosong/tak dikenal
                         }
-                    }
+                    },
+                    { seasonNumberFor(q, it.displayTitle) ?: Int.MAX_VALUE }
                 )
             )
+        }
+
+        /**
+         * Nomor musim dari judul — HANYA bila sisa judul setelah query
+         * persis penanda musim ("Season 2", "2nd Season"). Contoh:
+         * query "nanatsu no taizai" + "Nanatsu no Taizai Season 2" → 2;
+         * "Nanatsu no Taizai: Mokushiroku no Yonkishi Season 2" → null
+         * (spinoff — ada subjudul sebelum "Season", jadi bukan Season 2
+         * seri utama); "Tokyo Ghoul √A Season 2" → null (ada "√A" di
+         * tengah). null = bukan seri bernomor → diurutkan setelah seri
+         * bernomor, urutan server dipertahankan.
+         */
+        private fun seasonNumberFor(query: String, title: String): Int? {
+            val q = query.trim().lowercase()
+            if (q.isEmpty()) return null
+            val t = title.trim()
+            if (!t.lowercase().startsWith(q)) return null
+            val rest = t.substring(q.length).trim()
+            Regex("""^Season\s+(\d+)$""", RegexOption.IGNORE_CASE).find(rest)?.let {
+                return it.groupValues[1].toIntOrNull()
+            }
+            Regex("""^(\d+)(st|nd|rd|th)\s+Season$""", RegexOption.IGNORE_CASE)
+                .find(rest)?.let {
+                    return it.groupValues[1].toIntOrNull()
+                }
+            return null
         }
     }
 
@@ -276,6 +326,18 @@ class SankaRepository(
     // ---- Katalog ----
 
     suspend fun home(): SankaHome = cached("home", TTL_HOME_MS) {
+        // v2.0.7 #3: bukaan dingin — memori kosong, tapi disk mungkin
+        // masih segar (TTL 10 menit). Pakai disk dulu (tanpa jaringan);
+        // fetch jaringan HANYA bila disk juga basi/tidak ada. Fetch segar
+        // yang dipaksa (setelah render dari disk) lewat homeFresh().
+        homeDiskCached() ?: fetchHomeFromNetwork()
+    }
+
+    /**
+     * Fetch /home dari jaringan + tulis ke disk (v2.0.7 #3). Dipanggil
+     * home() bila disk basi, dan homeFresh() bila UI meminta data segar.
+     */
+    private suspend fun fetchHomeFromNetwork(): SankaHome {
         // Raw disimpan di parse lambda (v2.0.4) supaya requireData bisa
         // me-Log.e 300 karakter pertamanya saat data null.
         var lastRaw = ""
@@ -283,7 +345,80 @@ class SankaRepository(
             { transport.getJson("anime/animekompi/home") },
             { raw -> lastRaw = raw; parseEnvelope(raw, SankaHome::class.java) }
         )
-        requireData(envelope, lastRaw, "home")
+        val data = requireData(envelope, lastRaw, "home")
+        writeHomeToDisk(lastRaw)
+        return data
+    }
+
+    /**
+     * Fetch /home SEGAR dari jaringan, mengabaikan cache memori + disk
+     * (v2.0.7 #3). Dipakai Beranda: render dulu dari disk, lalu fetch
+     * segar di belakang dan perbarui tampilan bila selesai. Hasilnya
+     * ditulis ke memori + disk seperti fetch biasa.
+     */
+    suspend fun homeFresh(): SankaHome {
+        val mutex = mutexFor("home")
+        return mutex.withLock {
+            val data = fetchHomeFromNetwork()
+            cache["home"] = CacheEntry(System.currentTimeMillis(), data)
+            data
+        }
+    }
+
+    /**
+     * Isi cache `home` MEMORI bila masih segar (TTL_HOME_MS) — TANPA
+     * jaringan, tanpa menyentuh throttle, tanpa baca disk.
+     */
+    fun homeMemoryCached(): SankaHome? {
+        val entry = cache["home"] ?: return null
+        if (System.currentTimeMillis() - entry.atMs >= TTL_HOME_MS) return null
+        return entry.value as? SankaHome
+    }
+
+    /**
+     * Isi cache `home` DISK bila masih segar (TTL_HOME_MS dari
+     * lastModified file) — baca + parse JSON di Dispatchers.IO (v2.0.7
+     * #3). null = file tidak ada / basi / rusak (file rusak dihapus
+     * supaya tidak dibaca ulang tiap bukaan). TIDAK PERNAH melempar —
+     * kegagalan disk tidak boleh menggagalkan render Beranda.
+     */
+    suspend fun homeDiskCached(): SankaHome? {
+        val file = homeDiskFile ?: return null
+        return try {
+            withContext(Dispatchers.IO) {
+                if (!file.exists()) return@withContext null
+                if (System.currentTimeMillis() - file.lastModified() >= TTL_HOME_MS) {
+                    return@withContext null
+                }
+                val raw = file.readText()
+                parseEnvelope(raw, SankaHome::class.java).data
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Cache disk home rusak / tidak bisa dibaca — diabaikan", e)
+            try {
+                withContext(Dispatchers.IO) { file.delete() }
+            } catch (ignored: Exception) {
+            }
+            null
+        }
+    }
+
+    /**
+     * Tulis JSON mentah /home ke disk (v2.0.7 #3) — best-effort: gagal
+     * tulis (penyimpanan penuh, dsb.) hanya di-Log.w, TIDAK menggagalkan
+     * fetch yang sudah berhasil.
+     */
+    private suspend fun writeHomeToDisk(raw: String) {
+        val file = homeDiskFile ?: return
+        try {
+            withContext(Dispatchers.IO) { file.writeText(raw) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal menulis cache disk home — diabaikan", e)
+        }
     }
 
     suspend fun terbaru(page: Int = 1): List<SankaEpisodeItem> =
@@ -348,6 +483,7 @@ class SankaRepository(
     }
 
     // ---- Gerbang Ecchi (kunci ketiganya: Ecchi + Erotica + Hentai) ----
+    // ---- + Sembunyikan donghua total (v2.0.7 #10) ----
 
     fun isEcchi(anime: SankaAnime): Boolean =
         Constants.LOCKED_GENRES.any { locked ->
@@ -359,13 +495,38 @@ class SankaRepository(
             detail.genreSlugs.any { it.equals(locked, ignoreCase = true) }
         }
 
+    /**
+     * Donghua (v2.0.7 #10 — keputusan Faygo: "Semua donghua kamu
+     * sembunyikan total"): genre slug "donghua" (atau nama genre
+     * "Donghua"). Dicocokkan seperti isEcchi — slug dulu, nama sebagai
+     * lapis kedua (Sanka kadang hanya mengisi salah satunya).
+     * JUJUR: ini hanya menyembunyikan tampilan di aplikasi kita — tidak
+     * menghapus dari katalog Sanka (server mereka, bukan milik kita).
+     * Tanpa tombol pengalih: donghua tidak pernah tampil di Beranda,
+     * Jelajahi, maupun pencarian. Riwayat/Favorit milik pengguna sendiri
+     * TIDAK disaring (bukan katalog).
+     */
+    fun isDonghua(anime: SankaAnime): Boolean =
+        anime.genreSlugs.any { it.equals("donghua", ignoreCase = true) } ||
+            anime.genres.orEmpty().any { it.name?.equals("Donghua", ignoreCase = true) == true }
+
+    fun isDonghua(detail: SankaDetail): Boolean =
+        detail.genreSlugs.any { it.equals("donghua", ignoreCase = true) } ||
+            detail.genres.orEmpty().any { it.name?.equals("Donghua", ignoreCase = true) == true }
+
+    /**
+     * Daftar anime yang boleh tampil — donghua SELALU disaring (v2.0.7
+     * #10, tanpa pengecualian), Ecchi disaring bila gerbang terkunci.
+     */
     fun visibleAnimes(list: List<SankaAnime>, ecchiUnlocked: Boolean): List<SankaAnime> =
-        if (ecchiUnlocked) list else list.filterNot { isEcchi(it) }
+        list.filterNot { isDonghua(it) || (!ecchiUnlocked && isEcchi(it)) }
 
     /**
      * Saring item episode terbaru (SankaEpisodeItem tidak membawa genre):
      * cocokkan `animeSlug` ke daftar ber-genre di respons home yang sama
      * (featured/ongoing/completed/movies/popular/trending).
+     * Donghua SELALU disaring (v2.0.7 #10); Ecchi disaring bila gerbang
+     * terkunci.
      *
      * SISA KEBOCORAN (terdokumentasi): anime yang TIDAK ada di daftar itu
      * tidak bisa dinilai genre-nya → tetap tampil. Playback-nya tetap
@@ -378,14 +539,13 @@ class SankaRepository(
         home: SankaHome,
         ecchiUnlocked: Boolean
     ): List<SankaEpisodeItem> {
-        if (ecchiUnlocked) return items
-        val lockedSlugs = (home.featured.orEmpty() + home.ongoing.orEmpty() +
+        val hiddenSlugs = (home.featured.orEmpty() + home.ongoing.orEmpty() +
             home.completed.orEmpty() + home.movies.orEmpty() + home.popular +
             home.trendingToday.orEmpty())
-            .filter { isEcchi(it) }
+            .filter { isDonghua(it) || (!ecchiUnlocked && isEcchi(it)) }
             .mapNotNull { it.slug }
             .toSet()
-        return items.filterNot { it.animeSlug in lockedSlugs }
+        return items.filterNot { it.animeSlug in hiddenSlugs }
     }
 
     // Item episode tidak membawa genre — penyaringan Ecchi terjadi di
