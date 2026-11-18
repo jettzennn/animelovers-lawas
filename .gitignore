@@ -20,3 +20,4 @@ google-services.json
 # IDE
 .idea/
 *.DS_Store
+.acside/
