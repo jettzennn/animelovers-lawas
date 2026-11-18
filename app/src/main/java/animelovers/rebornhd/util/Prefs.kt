@@ -46,16 +46,22 @@ class Prefs(context: Context) {
         set(value) = prefs.edit().putString("allnotif", value).apply()
 
     /**
-     * "1" = utamakan 720p, "0" = utamakan 480p (default SD sejak v2 —
-     * instalasi baru membuka embed 480p dulu, persis seperti aslinya;
-     * keputusan Faygo 2026-11-17 ~18:59 WIB: "buka sd dulu aja gpp,
-     * aku inget animlovers juga sd dulu baru hd").
+     * "1" = utamakan 720p, "0" = utamakan 480p (default direct sejak v2.0.6 —
+     * instalasi baru membuka file langsung 720p dulu di kontrol aplikasi
+     * sendiri; keputusan Faygo 2026-11-18 ~17:21 WIB (D4): "video anime
+     * berjalan di kontrol player sendiri, kenapa harus pindah sih" — embed
+     * WebView hanya cadangan terakhir bila tidak ada video langsung sama
+     * sekali. Dulu default "0" (embed dulu, seperti aslinya SD dulu) —
+     * diubah v2.0.6 karena yang Faygo lihat di v2.0.5 adalah player
+     * website Blogger di dalam WebView, bukan kontrol aplikasi.
      * v2: 720p = sumber direct (Pixeldrain/token/Blogger itag 22);
-     * 480p = embed WebView. Pref ini memilih kandidat AWAL saat episode
-     * dibuka; tombol `resolution` di player bisa mengalihkannya.
+     * 360p = Blogger itag 18 (direct); embed WebView = fallback terakhir.
+     * Pref ini memilih kandidat AWAL saat episode dibuka; tombol
+     * `resolution` di player mengalihkan kualitas DI PLAYER YANG SAMA
+     * (direct 720p ↔ direct 360p).
      */
     var hdOnly: String
-        get() = prefs.getString("hd_only", "0") ?: "0"
+        get() = prefs.getString("hd_only", "1") ?: "1"
         set(value) = prefs.edit().putString("hd_only", value).apply()
 
     /** "true" = Putar Otomatis, "false" = Putar Sekali. */

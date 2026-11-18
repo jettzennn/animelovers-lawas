@@ -145,7 +145,29 @@ class HomeFragment : Fragment() {
     }
 
     private fun load() {
-        if (!requireContext().isOnline()) {
+        // v2.0.6 #7: render dari CACHE dulu (bila ada, <10 menit) — Beranda
+        // terisi instan di bukaan kedua; fetch segar tetap jalan di
+        // belakang dan memperbarui tampilan bila selesai. Tanpa cache
+        // (bukaan dingin pertama), jalur lama: spinner sampai fetch kembali.
+        // Bila OFFLINE tapi cache ada → tampilkan cache tanpa toast (data
+        // paling lama 10 menit — cukup segar); offline TANPA cache → toast
+        // seperti dulu. Satu-satunya request di sini tetap repo.home()
+        // (cache + dedup Mutex per kunci) — tidak ada request tambahan,
+        // throttle 1,4 dtk tidak tersentuh.
+        val repo = requireContext().app().sankaRepository
+        val cachedHome = repo.homeCached()
+        if (cachedHome != null) {
+            home = cachedHome
+            applyData()
+            Log.d(
+                "AnimLoversTiming",
+                "T+${SystemClock.elapsedRealtime()} Home render dari cache"
+            )
+            if (!requireContext().isOnline()) {
+                binding.swipeContainerHome.isRefreshing = false
+                return
+            }
+        } else if (!requireContext().isOnline()) {
             binding.swipeContainerHome.isRefreshing = false
             requireContext().toast(getString(R.string.tidak_ada_koneksi))
             return
@@ -158,7 +180,7 @@ class HomeFragment : Fragment() {
                 // v2.0.5: tonggak ukur rantai render Beranda (D2) — T+0 =
                 // Splash onCreate (lihat AnimLoversTiming di logcat).
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() mulai")
-                home = requireContext().app().sankaRepository.home()
+                home = repo.home()
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() kembali")
                 applyData()
                 Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home applyData selesai (render)")

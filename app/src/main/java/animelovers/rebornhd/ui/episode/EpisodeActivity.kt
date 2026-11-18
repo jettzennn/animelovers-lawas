@@ -122,6 +122,9 @@ class EpisodeActivity : BaseActivity() {
             toast(getString(R.string.gagal_memutar, episode))
             return
         }
-        VideoPlayActivity.start(this, animeSlug, animeTitle, animePoster, episode, episodeSlug)
+        VideoPlayActivity.start(
+            this, animeSlug, animeTitle, animePoster, episode, episodeSlug,
+            isMovie = detail?.type == "Movie"
+        )
     }
 }

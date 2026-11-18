@@ -23,10 +23,30 @@ import java.util.Locale
  * seksi Info dihapus dari Beranda (desain.md §14).
  */
 
-private fun loadPoster(view: android.widget.ImageView, url: String) {
+/**
+ * Muat poster dengan Coil — decode SEBESAR tampilan (v2.0.6 #4), bukan
+ * ukuran penuh: poster asli 66–147 KB di-decode penuh membebani RAM +
+ * waktu di koneksi lambat; kartu hanya butuh ~100×150dp.
+ * - placeholder: chibi splashh (masih memuat — familiar, maskot aplikasi).
+ * - error: ikon netral ic_poster_error (gagal — SENGAJA BERBEDA dari
+ *   placeholder supaya loading vs gagal bisa dibedakan sekilas).
+ * Ukuran (dp) mengikuti layout item pemanggil; slider (lebar layar ×
+ * 260dp) memakai lebar layar perangkat.
+ */
+private fun loadPoster(
+    view: android.widget.ImageView,
+    url: String,
+    widthDp: Int = 100,
+    heightDp: Int = 150
+) {
+    val metrics = view.resources.displayMetrics
+    val widthPx = if (widthDp < 0) metrics.widthPixels
+    else (widthDp * metrics.density).toInt().coerceAtLeast(1)
+    val heightPx = (heightDp * metrics.density).toInt().coerceAtLeast(1)
     view.load(url) {
         placeholder(R.drawable.splashh)
-        error(R.drawable.splashh)
+        error(R.drawable.ic_poster_error)
+        size(widthPx, heightPx)
         crossfade(true)
     }
 }
@@ -161,6 +181,7 @@ class BrowseGridAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
+        // Poster grid Jelajahi: 100×150dp (item_browse_grid.xml, default).
         loadPoster(b.posterViewBrows, anime.posterUrl)
         b.titleViewBrows.text = anime.displayTitle
     }
@@ -203,7 +224,8 @@ class BrowseListAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
         val b = holder.binding
-        loadPoster(b.posterViewBrows, anime.posterUrl)
+        // Poster list Jelajahi: 105×135dp (item_browse_list.xml).
+        loadPoster(b.posterViewBrows, anime.posterUrl, widthDp = 105, heightDp = 135)
         b.titleViewBrows.text = anime.displayTitle
         b.statusText.text = anime.status ?: ""
         b.maxepisode.visibility = View.GONE
@@ -243,11 +265,12 @@ class SlideAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val anime = items[position]
-        holder.binding.slideImage.load(anime.posterUrl) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-            crossfade(true)
-        }
+        // Slider Beranda: lebar layar × 260dp (fragment_home.xml) —
+        // lebar penuh, bukan ukuran poster kartu.
+        loadPoster(
+            holder.binding.slideImage, anime.posterUrl,
+            widthDp = -1, heightDp = 260
+        )
         holder.binding.slideNameTXT.text = anime.displayTitle
     }
 

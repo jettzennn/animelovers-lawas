@@ -11,9 +11,13 @@ import animelovers.rebornhd.data.repo.PlayerRepository
 import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.Prefs
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 /**
  * Application — satu tempat membuat dependensi (tanpa DI framework, PRD §3.2).
@@ -29,8 +33,15 @@ import kotlinx.coroutines.SupervisorJob
  * v2.0.3: WebView DITEMPEL ke window MainActivity (attachToWindow di
  * MainActivity.onCreate) + UA tanpa penanda "Version/4.0" — v2.0.2 yang
  * tak tertempel tidak memicu onPageFinished di Vivo Faygo.
+ *
+ * v2.0.6 #4: Coil memakai ImageLoaderFactory ini — timeout lebih panjang
+ * dari default (baca 10 dtk): connect 15 dtk / baca 30 dtk / tulis 15 dtk.
+ * 30 dtk baca = sama dengan SANKA_READ_TIMEOUT_S (transport WebView) —
+ * poster 66–147 KB di koneksi 1 KB/dtk tetap tidak akan selesai, tapi
+ * poster tidak lagi mati di 10 detik pertama saat koneksi sempat
+ * tersendat. JANGAN ubah SankaWebTransport untuk ini — ini hanya Coil.
  */
-class AnimeloversApp : Application() {
+class AnimeloversApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
@@ -42,6 +53,19 @@ class AnimeloversApp : Application() {
         AppCompatDelegate.setDefaultNightMode(
             AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
         )
+    }
+
+    /** ImageLoader Coil aplikasi (v2.0.6 #4) — timeout baca 30 detik. */
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    .build()
+            }
+            .build()
     }
 
     /** Scope aplikasi — untuk kerja yang harus selesai walau Activity sudah

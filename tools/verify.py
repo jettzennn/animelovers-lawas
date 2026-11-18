@@ -432,10 +432,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*10\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 10 untuk v2.0.5")
-if '"2.0.5"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.5"')
+if not re.search(r"versionCode\s*=\s*11\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 11 untuk v2.0.6")
+if '"2.0.6"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.6"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -532,6 +532,189 @@ for _cc in re.findall(r'android:configChanges="([^"]*)"', _manifest_text):
             "saat tema HP berubah activity harus dibuat ulang sistem "
             "supaya tema baru diterapkan (v2.0.5 item 5)"
         )
+
+# ---------- 16. Gerbang v2.0.6 — player direct-dulu + label jujur + sortir + poster ----------
+# 16a. Default hdOnly WAJIB "1" (direct dulu) — D4: player mulai dari
+#      video langsung di kontrol aplikasi sendiri; embed hanya fallback.
+if 'getString("hd_only", "1")' not in _prefs_kt:
+    errors.append(
+        'Prefs.kt: default hdOnly wajib "1" (direct dulu, D4 v2.0.6) — '
+        'default "0" memilih embed WebView dulu'
+    )
+
+# 16b. TIDAK BOLEH ada hardcode "480p" di VideoPlayActivity (label kualitas
+#      bilah WebView wajib dari label sumber embed, bukan literal).
+_video_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "player" / "VideoPlayActivity.kt"
+).read_text(encoding="utf-8")
+if '"480p"' in _video_kt:
+    errors.append(
+        'VideoPlayActivity.kt: hardcode "480p" dilarang — label kualitas '
+        "bilah WebView wajib dari source.qualityLabel (v2.0.6 #2)"
+    )
+
+# 16c. Label "Movie" untuk film (type == "Movie") — string + pemakaian.
+if "movie_label" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: label Movie wajib ada (movie_label) — "
+        "film menampilkan \"Movie\", bukan \"Episode N\" (v2.0.6 #2)"
+    )
+if "EXTRA_MOVIE" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: flag Movie wajib dibawa lewat intent "
+        "(EXTRA_MOVIE) dari Detail/Episode (v2.0.6 #2)"
+    )
+
+# 16d. Sortir pencarian client-side (v2.0.6 #3) — fungsi + pemakaian di search().
+_repo_kt = (
+    JAVA / "animelovers" / "rebornhd" / "data" / "repo" / "SankaRepository.kt"
+).read_text(encoding="utf-8")
+if "fun sortSearchResults" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: fungsi sortSearchResults wajib ada "
+        "(judul persis → TV → Special/Movie, v2.0.6 #3)"
+    )
+if "sortSearchResults(query" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: search() wajib memakai sortSearchResults "
+        "sebelum menyerahkan hasil ke UI (v2.0.6 #3)"
+    )
+
+# 16e. Poster (v2.0.6 #4): loadPoster WAJIB pakai size() + error BERBEDA
+#      dari placeholder (chibi loading vs ikon netral gagal).
+_adapters_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "adapter" / "AnimeAdapters.kt"
+).read_text(encoding="utf-8")
+if "size(widthPx, heightPx)" not in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: loadPoster wajib memakai size() (decode sebesar "
+        "tampilan, bukan ukuran penuh — v2.0.6 #4)"
+    )
+if "error(R.drawable.ic_poster_error)" not in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: drawable error poster wajib ic_poster_error "
+        "(BERBEDA dari placeholder chibi — v2.0.6 #4)"
+    )
+if "error(R.drawable.splashh)" in _adapters_kt:
+    errors.append(
+        "AnimeAdapters.kt: error poster tidak boleh lagi splashh (chibi) — "
+        "loading vs gagal harus bisa dibedakan (v2.0.6 #4)"
+    )
+if "ic_poster_error" not in defined["drawable"]:
+    errors.append(
+        "res/drawable: ic_poster_error.xml wajib ada "
+        "(ikon netral poster gagal — v2.0.6 #4)"
+    )
+
+# 16f. Throttle Sanka TIDAK BOLEH berubah (re-assert §13d — 3 pelanggaran
+#      = BAN PERMANEN; patch ini tidak boleh menyentuhnya).
+if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
+    errors.append(
+        "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
+        "(v2.0.6 #7 tidak boleh mengecilkan throttle)"
+    )
+
+# 16g. Render Beranda dari cache dulu (v2.0.6 #7): homeCached() + pakai di Home.
+if "fun homeCached()" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: homeCached() wajib ada (baca cache home tanpa "
+        "jaringan — v2.0.6 #7)"
+    )
+_home_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "home" / "HomeFragment.kt"
+).read_text(encoding="utf-8")
+if "homeCached()" not in _home_kt:
+    errors.append(
+        "HomeFragment.kt: load() wajib render dari homeCached() dulu "
+        "sebelum fetch segar (v2.0.6 #7)"
+    )
+
+# 16h. Perilaku buffering ala asli (v2.0.6 #5) + label dari tinggi video
+#      aktual (v2.0.6 #2, onVideoSizeChanged).
+if "updateBufferingUi" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: updateBufferingUi wajib ada (overlay "
+        "next/prev tampil, tombol + label sembunyi saat BUFFERING — v2.0.6 #5)"
+    )
+if "onVideoSizeChanged" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: onVideoSizeChanged wajib ada (label "
+        '"v720p" dari tinggi video aktual — v2.0.6 #2)'
+    )
+
+# 16i. Timeout Coil lebih panjang (v2.0.6 #4): ImageLoaderFactory dengan
+#      readTimeout 30 detik (konsisten dengan SANKA_READ_TIMEOUT_S).
+if "ImageLoaderFactory" not in _app_kt or "readTimeout(30" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: wajib ImageLoaderFactory dengan readTimeout "
+        "30 detik untuk Coil (v2.0.6 #4)"
+    )
+
+# 16j. Anti-flip (v2.0.6 #1b): retry load direct lebih sabar — policy
+#      kustom 8× retry internal (default Media3: 3×) + dipasang di
+#      MediaSourceFactory setupPlayer, supaya buffering lambat tidak
+#      langsung jadi error lalu jatuh ke embed.
+if "DirectLoadErrorHandlingPolicy" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: DirectLoadErrorHandlingPolicy wajib ada "
+        "(retry load direct 8×, bukan default Media3 3× — v2.0.6 #1b)"
+    )
+if "setLoadErrorHandlingPolicy" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: policy retry wajib dipasang lewat "
+        "DefaultMediaSourceFactory.setLoadErrorHandlingPolicy (v2.0.6 #1b)"
+    )
+if "MIN_DIRECT_LOAD_RETRIES = 8" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: MIN_DIRECT_LOAD_RETRIES wajib 8 "
+        "(v2.0.6 #1b)"
+    )
+
+# 16k. Timeout HTTP video direct lebih panjang (v2.0.6 #1b): connect 15 dtk
+#      / read 30 dtk (default Media3: 8/8 dtk — sekali read macet 8 dtk,
+#      error langsung naik ke onPlayerError lalu tryNextCandidate jatuh
+#      ke embed = flip yang dilaporkan Faygo).
+if "setConnectTimeoutMs(15_000)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: connectTimeout video direct wajib 15_000 ms "
+        "(v2.0.6 #1b)"
+    )
+if "setReadTimeoutMs(30_000)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: readTimeout video direct wajib 30_000 ms "
+        "(sama seperti timeout transport Sanka — v2.0.6 #1b)"
+    )
+
+# 16l. TIDAK BOLEH ada flip otomatis Media3 → WebView (v2.0.6 #1b, D4b):
+#      jalur kandidat-berikut WAJIB lewat playNextOrAsk — bila kandidat
+#      berikut adalah embed, tampil dialog tanya dulu; hanya ketukan
+#      eksplisit "Putar lewat website" yang boleh pindah ke website.
+if "playNextOrAsk" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: playNextOrAsk wajib ada (gerbang "
+        "kandidat-berikut — embed tidak boleh dimainkan langsung, v2.0.6 #1b)"
+    )
+if "showWebViewFallbackDialog" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: showWebViewFallbackDialog wajib ada "
+        "(tanya pengguna sebelum pindah ke website — v2.0.6 #1b)"
+    )
+if "playCandidate(nextIndex" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: playCandidate(nextIndex...) langsung "
+        "dilarang — jalur tryNextCandidate wajib lewat playNextOrAsk "
+        "(v2.0.6 #1b)"
+    )
+if "webview_fallback_judul" not in defined["string"]:
+    errors.append(
+        "strings.xml: webview_fallback_judul wajib ada (judul dialog "
+        "tanya-fallback-ke-WebView — v2.0.6 #1b)"
+    )
+if "putar_lewat_website" not in defined["string"]:
+    errors.append(
+        "strings.xml: putar_lewat_website wajib ada (tombol eksplisit "
+        "pindah ke website — v2.0.6 #1b)"
+    )
 
 # ---------- Laporan ----------
 

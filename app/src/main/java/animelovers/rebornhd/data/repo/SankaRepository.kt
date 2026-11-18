@@ -134,6 +134,34 @@ class SankaRepository(
         const val TTL_HOME_MS = 10 * 60 * 1000L
         const val TTL_SEARCH_MS = 5 * 60 * 1000L
         const val TTL_DETAIL_MS = 10 * 60 * 1000L
+
+        /**
+         * Sortir hasil pencarian client-side (v2.0.6 #3) — urutan server
+         * BUKAN relevansi (live "one piece": judul utama "One Piece" (TV)
+         * ada di posisi 19 dari 24, di atasnya 16 Movie + 5 Special).
+         * Aturan STABIL (urutan relatif di dalam tiap kelompok
+         * dipertahankan — sortedWith Kotlin stabil):
+         *  1. judul persis sama dengan query (case-insensitive, trim);
+         *  2. type == "TV" (type kosong/tak dikenal ikut kelompok ini —
+         *     jangan turunkan data yang tidak dikenal);
+         *  3. type == "Special", lalu "Movie" → terakhir.
+         * Fungsi MURNI (bisa diuji unit tanpa Android/jaringan).
+         */
+        fun sortSearchResults(query: String, list: List<SankaAnime>): List<SankaAnime> {
+            val q = query.trim()
+            return list.sortedWith(
+                compareBy<SankaAnime>(
+                    { if (it.displayTitle.trim().equals(q, ignoreCase = true)) 0 else 1 },
+                    {
+                        when (it.type?.trim()?.lowercase()) {
+                            "movie" -> 3
+                            "special" -> 2
+                            else -> 1 // "TV" + type kosong/tak dikenal
+                        }
+                    }
+                )
+            )
+        }
     }
 
     /**
@@ -273,8 +301,23 @@ class SankaRepository(
                 { transport.getJson("anime/animekompi/search?q=${encodeSegment(query)}&page=$page") },
                 { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )
-            envelope.data ?: emptyList()
+            // v2.0.6 #3: urutan server bukan relevansi — sortir di sini
+            // (sebelum diserahkan ke UI + sebelum di-cache) supaya judul
+            // utama selalu di atas, movie/special di bawah.
+            sortSearchResults(query, envelope.data ?: emptyList())
         }
+
+    /**
+     * Isi cache `home` bila masih segar (TTL_HOME_MS) — TANPA jaringan,
+     * tanpa menyentuh throttle. Dipakai Beranda v2.0.6 #7 (render dari
+     * cache dulu sambil fetch segar di belakang). null = belum ada /
+     * sudah basi → jalur fetch biasa.
+     */
+    fun homeCached(): SankaHome? {
+        val entry = cache["home"] ?: return null
+        if (System.currentTimeMillis() - entry.atMs >= TTL_HOME_MS) return null
+        return entry.value as? SankaHome
+    }
 
     suspend fun genre(slug: String, page: Int = 1): List<SankaAnime> =
         cached("genre:$slug:$page", TTL_SEARCH_MS) {

@@ -46,6 +46,7 @@
     <string name="genre_format">Genre : %1$s</string>
     <string name="belum_ada_episode">Belum ada episode</string>
     <string name="episode_label">Episode %1$d</string>
+    <string name="movie_label">Movie</string>
 
     <!-- Gerbang Ecchi (overlay kunci) -->
     <string name="buka_sekarang">Buka Sekarang</string>
@@ -60,6 +61,12 @@
     <string name="volume">Volume</string>
     <string name="film">Film</string>
     <string name="gagal_memutar">Gagal memutar Episode %1$d</string>
+    <!-- v2.0.6 #1b: dialog tanya-fallback-ke-WebView — muncul HANYA bila
+         semua kandidat direct benar-benar habis; pindah ke website hanya
+         lewat ketukan eksplisit pengguna (anti-flip). -->
+    <string name="webview_fallback_judul">Video langsung gagal dimuat</string>
+    <string name="webview_fallback_isi">Video langsung tidak bisa diputar di koneksi ini. Putar lewat website?</string>
+    <string name="putar_lewat_website">Putar lewat website</string>
     <string name="memuat_video">Memuat video…</string>
     <string name="terlalu_banyak_permintaan">Terlalu banyak permintaan, coba lagi sebentar lagi</string>
 

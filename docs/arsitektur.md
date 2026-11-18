@@ -127,6 +127,27 @@ Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
    `isDarkTheme` yang sama — perbaikan #1–#4 berlaku di kedua tema
    (dialog gelap penuh di sistem gelap, dialog terang di sistem terang;
    splash ikut tema lewat `?attr/bgColor`).
+6. **v2.0.6:** (1) player direct-dulu + anti-flip (lihat "Alur data
+   utama" §4 dan "Player"); (2) label kualitas `"v720p"` dari tinggi
+   video aktual (`onVideoSizeChanged`) + label `"Movie"` untuk film
+   (`type == "Movie"`, dibawa lewat `EXTRA_MOVIE`); tanpa hardcode
+   `"480p"`; (3) sortir pencarian client-side yang stabil — judul persis
+   → TV → Special/Movie (`SankaRepository.sortSearchResults`, dari field
+   `type`); (4) poster: `loadPoster` pakai `size()` sesuai ImageView,
+   Coil `ImageLoaderFactory` (connect 15 dtk / read 30 dtk / write 15 dtk
+   — read 30 dtk sama seperti timeout transport Sanka), drawable error
+   `ic_poster_error` BERBEDA dari placeholder chibi `splashh` (loading
+   vs gagal bisa dibedakan); (5) buffering ala asli — saat BUFFERING
+   overlay next/prev tampil, tombol + label kualitas sembunyi, resolusi
+   tidak bisa diketuk; READY membalikkan; (6) resume disimpan saat seek
+   (penanda seek programatis supaya tidak rewind berulang −30 dtk) +
+   ENDED → episode berikut (film / `teruskan=="false"` / episode terakhir
+   → keluar); auto-next di WebView DINONAKTIFKAN (tidak ada event ENDED
+   dari embed; polling durasi per-embed rapuh — diputuskan Frontend);
+   (7) Beranda render dari cache dulu — `HomeFragment.load()` menampilkan
+   `homeCached()` (cache 10 menit) segera, lalu tetap fetch segar dan
+   perbarui tampilan; `offscreenPageLimit` tetap 10 (tidak terbukti
+   penyebab lag); throttle 1.400 ms + guard R8 TIDAK disentuh.
 
 ## Alur data utama
 
@@ -146,10 +167,18 @@ Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
    (1) Pixeldrain direct 720p dari `sources[]` (`kind: direct`, terbukti
    3/4 episode); (2) stream token Animekompi dari `mirrors[]` type `mp4`
    (206 terbukti); (3) Blogger hasil ekstrak — itag 22 (720p) → itag 18
-   (360p); (4) WebView embed (fallback terakhir). Bila satu sumber gagal
-   → fallback otomatis ke berikut tanpa tanya pengguna. URL ber-token /
-   hasil ekstrak terikat waktu + IP — ambil segar tiap kali putar,
-   **JANGAN** disimpan di DB/riwayat.
+   (360p); (4) WebView embed (fallback terakhir). **v2.0.6 (D4): player
+   WAJIB mulai dari direct** — default pref `hdOnly` kini `"1"`;
+   `pickStartCandidate` tidak pernah memilih embed bila masih ada
+   kandidat direct. Bila satu sumber direct gagal → fallback otomatis
+   ke direct berikut (termasuk ekstrak Blogger lazy sekali); **ke embed
+   TIDAK otomatis** — bila semua direct habis, tampil dialog tanya
+   ("Putar lewat website?") dan hanya ketukan eksplisit yang memindahkan
+   player ke website (anti-flip #1b — laporan Faygo 17:27 WIB). Jaringan
+   lambat bukan kegagalan: timeout HTTP video 15 dtk (connect) / 30 dtk
+   (read) + retry load internal 8× (default Media3: 8/8 dtk, 3×).
+   URL ber-token / hasil ekstrak terikat waktu + IP — ambil segar tiap
+   kali putar, **JANGAN** disimpan di DB/riwayat.
 5. **Riwayat** — Room tabel `video` + `favorite`. **Kunci berubah:**
    `idtitle` kini SLUG Sanka (teks), bukan id numerik v1. Aturan
    tulis resume: episode sama → update posisi; episode beda → hapus
@@ -221,14 +250,38 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
   Pixeldrain / stream token / Blogger hasil ekstrak — bukan HLS.
 - **TIDAK ADA tombol Subtitle** (hardsub tidak punya track) dan tidak ada
   logika ganti track subtitle.
-- Kualitas: tombol alih `resolution` — "720p" / "480p" sesuai sumber yang
-  diputar (jujur, jangan tulis 1080p); bila hanya satu sumber, tampil
-  varian `_off` dan tidak bisa diketuk. Pref `hd_only` diartikan ulang
-  sebagai "utamakan 720p/480p".
+- Kualitas: tombol alih `resolution` — direct 720p ↔ direct 360p **di
+  player yang sama** (Media3), BUKAN ganti mesin (Media3 ↔ WebView);
+  bila hanya satu tier direct, tampil varian `_off` dan tidak bisa
+  diketuk. Bila tier 360p belum ada di daftar, ketuk `resolution` memicu
+  fetch Blogger lazy sekali. Pref `hd_only` default `"1"` (v2.0.6 D4:
+  direct dulu); `"0"` = utamakan 360p direct. Label `kualitas_video` =
+  `"v" + tinggi video AKTUAL + "p"` (mis. `"v720p"`, dari
+  `onVideoSizeChanged`, seperti asli) — bukan dari sumber; sebelum ukuran
+  diketahui, label sumber dipakai. Label episode = `"Movie"` untuk film
+  (`type == "Movie"`); tanpa hardcode `"480p"` di mana pun.
+- **Anti-flip (v2.0.6 #1b):** jaringan lambat BUKAN kegagalan — timeout
+  HTTP video 15 dtk (connect) / 30 dtk (read) + retry load internal 8×
+  (default Media3: 8/8 dtk, 3×) supaya kandidat direct yang sama dicoba
+  ulang dulu sebelum dianggap gagal. Bila semua direct habis, fallback ke
+  WebView DITANYAKAN lewat dialog (`showWebViewFallbackDialog`,
+  sekali per episode) — hanya ketukan "Putar lewat website" yang
+  memindahkan player ke website; "Tidak"/batal = toast jujur + keluar
+  (seperti asli). Jalur kandidat-berikut WAJIB lewat `playNextOrAsk` —
+  tidak ada lagi `playCandidate(nextIndex...)` langsung. Badge `"720p"` di
+  bilah WebView tetap ada sebagai jalan pindah WebView → Media3 (ketukan
+  pengguna, arah sebaliknya).
 - Mode WebView (embed Blogger/Abyssplayer, fallback terakhir): bilah atas
   minimal + kontrol bawaan halaman embed; Berikutnya/Sebelumnya +
   auto-play-next TIDAK berlaku di mode WebView (aplikasi tidak bisa
-  mendeteksi video selesai).
+  mendeteksi video selesai — auto-next DINONAKTIFKAN, bukan dipura-pura).
+- Buffering (v2.0.6 #5, ala asli): saat BUFFERING overlay next/prev
+  TAMPIL, tombol next/prev PNG + label kualitas DISEMBUNYIKAN, klik ikon
+  resolusi DINONAKTIFKAN; READY membalikkan. Hanya mode Media3.
+- Resume (v2.0.6 #6, ala asli): disimpan −30 detik saat seek / ganti
+  kualitas / keluar; seek programatis (resume saat mulai) ditandai supaya
+  tidak rewind berulang. ENDED → episode berikut (bila `teruskan=="true"`
+  dan ada episode berikut); film / episode terakhir → keluar.
 - Loading: `ProgressBar` + teks "Memuat video…" sebelum frame pertama;
   kontrol tidak auto-hide selama memuat supaya tombol kualitas selalu
   bisa diketuk.
@@ -258,12 +311,18 @@ sistem subtitle (VTT/translate/tracking), backend lokal.
 
 ## Batasan yang diketahui
 
-- Compile belum terverifikasi lokal (tanpa Android SDK) — bukti compile
-  adalah CI hijau (`android-ci.yml`).
+- Compile lokal TERBLOKIR di sandbox (bukan tanpa SDK): socket loopback
+  Java diintersep sandbox — klien daemon Gradle menerima balasan
+  `"muse: Other TCP connections is ..."` (byte pertama 'm' = type tag
+  109) sehingga daemon tidak pernah bisa dipakai; terbukti 2026-11-18
+  lewat uji socket Java vs Python + 4× percobaan daemon bersih. Pemakaian
+  API Media3 baru (v2.0.6 #1b) terverifikasi lewat harness kotlinc
+  1.9.22 standalone melawan mirror lokal (Media3 1.2.1) — bukti compile
+  penuh tetap CI hijau (`android-ci.yml`).
 - 1080p streaming TIDAK ADA di sumber ini (0/4 episode contoh) — label
   kualitas aplikasi tidak boleh menulis 1080p.
-- Pixeldrain 720p hanya di 3/4 episode contoh — sisanya jatuh ke embed
-  480p (fallback otomatis).
+- Pixeldrain 720p hanya di 3/4 episode contoh — sisanya embed (fallback
+  terakhir, v2.0.6: hanya lewat dialog tanya, tidak otomatis).
 - File 720p 142–264 MB/episode — di koneksi lambat, frame pertama bisa
   lama; player menampilkan spinner + "Memuat video…" yang jujur.
 - Sanka adalah scraper Animekompi tanpa kontrak resmi — bentuk respons
