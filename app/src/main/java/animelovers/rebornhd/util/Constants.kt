@@ -57,5 +57,11 @@ object Constants {
     const val SLIDER_INTERVAL_MS = 3_000L
 
     // Splash: delay sebelum ke Main (aturan asli ±2 detik).
-    const val SPLASH_DELAY_MS = 2_000L
+    // v2.0.5 (D2, FINAL): delay DIPOTONG jadi 0 — Beranda terasa lambat
+    // ~5 detik karena rantai Splash 2 dtk + cold-start WebView + throttle
+    // 1,4 dtk + JSON home ~275 KB. Penyimpangan fidelitas yang disetujui
+    // (REA: Splash → Main delay 2 detik). Target: Beranda terisi ≤2 detik
+    // setelah Main tampil (di luar Splash) — diukur di HP lewat log
+    // AnimLoversTiming (Splash → Main → home() kembali → applyData).
+    const val SPLASH_DELAY_MS = 0L
 }

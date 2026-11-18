@@ -1,6 +1,8 @@
 package animelovers.rebornhd.ui.main.home
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -153,8 +155,13 @@ class HomeFragment : Fragment() {
         binding.swipeContainerHome.isRefreshing = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
+                // v2.0.5: tonggak ukur rantai render Beranda (D2) — T+0 =
+                // Splash onCreate (lihat AnimLoversTiming di logcat).
+                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() mulai")
                 home = requireContext().app().sankaRepository.home()
+                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() kembali")
                 applyData()
+                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home applyData selesai (render)")
             } catch (e: RateLimitException) {
                 // Pesan rate limit persis (desain.md §14.3) — jangan
                 // disamarkan jadi "Gagal memuat".

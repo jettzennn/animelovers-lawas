@@ -62,6 +62,72 @@ menahan `-keepattributes Signature, InnerClasses, EnclosingMethod,
 `verify.py` kini menolak subclass TypeToken anonim di kode produksi.
 Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
 
+**v2.0.5 — DIALOG GELAP + PLAYER TANPA DIALOG MODE + DETAIL TERANG + SPLASH 0:**
+
+1. **Dialog gelap penuh:** parent `DarkAlert` dulu
+   `Theme.AppCompat.Light.Dialog.Alert` — `android:background` hanya
+   menggelapkan ISI dialog, latar window/decor ikut parent Light (putih):
+   strip putih di kanan dialog data seluler / WiFi terputus / disclaimer.
+   Parent kini `Theme.AppCompat.Dialog.Alert` + `android:windowBackground`
+   dan `android:colorBackground` gelap penuh (`@color/darktheme`).
+   `LightAlert` tidak disentuh; `alertTheme()` (BaseActivity) tidak berubah.
+2. **Dialog mode di player DIHAPUS (D1):** `showModeDialog()` +
+   parameter `showModeDialog` di `loadEpisode()` + string
+   `pilih_mode`/`streaming` dihapus (`batal` tetap: dipakai tombol Batal
+   di Pengaturan); semua call site langsung
+   `playCandidate(pickStartCandidate(resolved))` — masuk player langsung
+   memutar (pref `hdOnly` tetap dihormati). **Unduh PINDAH ke kontrol
+   player** (D1): tombol ikon `download_new` di kolom kanan kontrol Media3
+   (`downloadBtn`, `exo_playback_control_view.xml`) + bilah atas mode
+   WebView (`webViewDownload`, `activity_video.xml`); keduanya memanggil
+   `downloadSource(downloadUrl, finishAfter=false)` — unduh TIDAK lagi
+   menutup player. Tombol hanya tampil bila ada file .mp4 langsung
+   (Pixeldrain) — `updateDownloadUi()`. PENYIMPANGAN disengaja dari REA
+   §4.1 (dialog "Silahkan pilih salah satu mode" memang ada di aslinya).
+3. **Detail terang setelah load:** `ShimmerFrameLayout` dulu membungkus
+   SELURUH konten dan setelah load hanya `stopShimmer()` — wadah shimmer
+   tetap di atas konten (tampak gelap/redup). Kini konten anak langsung
+   `ScrollView`; skeleton jadi overlay terpisah (id sama,
+   `shimmer_view_container`) yang hanya tampil saat loading
+   (`detail == null`); `hideShimmer()` (stop + `View.GONE`) dipanggil di
+   `finally` `load()` — sukses MAUPUN gagal. Geometri konten TIDAK berubah
+   (poster 350dp, overlay kunci Ecchi, grid episode, FAB). State error
+   menetap (temuan Minor Cari Bug): bila `detail` gagal dimuat dan belum
+   ada data, tampil pesan + tombol "Coba lagi" (memanggil `load()`) —
+   bukan cuma toast; bila konten sudah termuat lalu refresh gagal, konten
+   tetap tampil + toast saja. Overlay poster
+   `@color/black_overlay` (#47000000) dan placeholder `splashh` SENGAJA
+   dipertahankan: overlay hanya strip bawah poster (kontras teks judul,
+   desain asli) dan placeholder hanya tampil sampai Coil memuat poster asli.
+4. **Render Beranda (D2 + D3):** `SPLASH_DELAY_MS` 2.000 ms → **0**
+   (penyimpangan fidelitas yang disetujui — REA: Splash → Main delay
+   2 detik). Target: Beranda terisi ≤2 detik setelah Main tampil (di luar
+   Splash). **Jelajahi TIDAK dibuat malas (D3):** `BrowseFragment.load()`
+   memanggil `repo.home()` yang sama — cache + dedup Mutex per kunci
+   (`SankaRepository.cached`) membuat Home + Jelajahi hanya menghasilkan
+   SATU request jaringan, jadi Jelajahi tidak menambah beban jaringan di
+   jalur kritis Beranda; `offscreenPageLimit=1` pun tidak menunda Jelajahi
+   (ViewPager2 selalu membuat halaman tetangga); malas yang sesungguhnya
+   justru membuat Jelajahi kosong saat pertama dibuka — persis yang
+   dilarang D3. `offscreenPageLimit` tetap 10. Warm-up WebView lebih awal
+   TIDAK dilakukan: satu-satunya API yang ada (`attachToWindow`) tidak
+   membuat WebView bila belum ada, dan membuat WebView tiruan / prefetch
+   melanggar larangan (tanpa menyentuh `SankaWebTransport.kt`).
+   **Pengukuran (wajib di HP):** log `AnimLoversTiming` (tag logcat) —
+   `Splash onCreate` (T+0) → `Splash -> Main` → `Main onCreate` →
+   `Home home() mulai` → `Home home() kembali` → `Home applyData selesai
+   (render)`; selisih Main onCreate → applyData selesai = waktu render
+   Beranda (target ≤2 detik). Throttle 1,4 dtk, timeout 30 dtk, dan
+   aturan retry TIDAK berubah.
+5. **Tema mengikuti sistem HP (item 5):** `Prefs.isDarkTheme` dibaca dari
+   uiMode sistem; `AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM` di
+   `AnimeloversApp.onCreate`; switch tema manual di Pengaturan dihapus
+   (baris statis "Tema mengikuti sistem HP"). `DarkTheme`/`LightTheme`
+   dan `DarkAlert`/`LightAlert` tetap utuh dan dipilih lewat
+   `isDarkTheme` yang sama — perbaikan #1–#4 berlaku di kedua tema
+   (dialog gelap penuh di sistem gelap, dialog terang di sistem terang;
+   splash ikut tema lewat `?attr/bgColor`).
+
 ## Alur data utama
 
 1. **Katalog** — `SankaRepository.home()` (via transport WebView) → `featured` (slider), `latest`
@@ -117,11 +183,22 @@ PERMANEN** (IP diblokir selamanya). Satu ban mematikan aplikasi.
 ## Tema
 
 Dua tema (`DarkTheme`/`LightTheme`) lewat atribut `?attr/bgColor`,
-`?attr/textColor`, `?attr/metaTextColor` (gelap default `#2b2a2a`,
-terang `#ffffff`). Tiap activity memanggil `setTheme` di `onCreate`
-(`BaseActivity`) sebelum `super.onCreate`. Detail memakai status bar
-transparan; VideoPlay memakai `FullscreenTheme` dari manifest (tanpa tema
-aplikasi).
+`?attr/textColor`, `?attr/metaTextColor` (gelap `#2b2a2a`, terang
+`#ffffff`). v2.0.5 (item 5): tema **mengikuti sistem HP** — HP dark →
+app dark, HP terang → app terang. `Prefs.isDarkTheme` dibaca dari uiMode
+sistem (`Configuration.UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES`), bukan
+lagi pref manual "theme" (pref lama dihapus; nilai tersimpannya diabaikan);
+`AnimeloversApp.onCreate` memanggil
+`AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_FOLLOW_SYSTEM)`. Tiap
+activity memanggil `setTheme` di `onCreate` (`BaseActivity`) sebelum
+`super.onCreate`; dialog memakai `DarkAlert` (sistem gelap) /
+`LightAlert` (sistem terang) lewat `alertTheme()` yang sama; splash
+mengikuti tema lewat `?attr/bgColor`. Saat tema HP berubah, sistem
+membuat ulang activity (tanpa `configChanges="uiMode"` di manifest)
+sehingga tema baru langsung diterapkan. Switch tema manual di Pengaturan
+dihapus (diganti baris statis "Tema mengikuti sistem HP"). Detail memakai
+status bar transparan; VideoPlay memakai `FullscreenTheme` dari manifest
+(tanpa tema aplikasi).
 
 ## Gerbang Ecchi
 
@@ -170,6 +247,8 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
   episode tanpa Pixeldrain: tidak ada unduhan video (hanya embed).
 - Tanpa pilihan kualitas (keputusan Faygo D3) — unduh kualitas yang
   sedang diputar.
+- v2.0.5 (D1): tombol Unduh di kontrol player (Media3) + bilah atas mode
+  WebView; unduh tidak lagi menutup player (dulu lewat dialog mode).
 
 ## Yang sengaja TIDAK ada (PRD v2 §13)
 

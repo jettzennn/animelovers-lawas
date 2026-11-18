@@ -85,6 +85,18 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:text="720p" />
+
+            <!-- Unduh di mode WebView (v2.0.5, D1) — tombol yang sama seperti
+                 di kontrol Media3; default gone, visibilitas diatur
+                 updateDownloadUi() (hanya bila ada file .mp4 Pixeldrain). -->
+            <ImageView
+                android:id="@+id/webViewDownload"
+                android:visibility="gone"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/unduh"
+                app:srcCompat="@drawable/download_new" />
         </LinearLayout>
 
         <WebView

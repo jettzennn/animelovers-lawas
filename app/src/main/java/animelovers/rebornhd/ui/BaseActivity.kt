@@ -9,11 +9,13 @@ import animelovers.rebornhd.app
 import animelovers.rebornhd.util.Prefs
 
 /**
- * Activity dasar — menerapkan tema gelap/terang dari pref `theme` SEBELUM
- * super.onCreate (pola aslinya: tiap activity memanggil setTheme(Dark/Light)
- * di onCreate; lihat MainActivity.java / DetailActivity.java hasil bedah).
+ * Activity dasar — menerapkan tema gelap/terang dari SISTEM HP SEBELUM
+ * super.onCreate (v2.0.5 item 5: `prefs.isDarkTheme` kini dibaca dari
+ * uiMode sistem, bukan pref manual — pola aslinya tiap activity memanggil
+ * setTheme(Dark/Light) di onCreate; lihat MainActivity.java /
+ * DetailActivity.java hasil bedah).
  *
- * - Tema gelap (default): status bar #2b2a2a + ikon status bar terang.
+ * - Tema gelap: status bar #2b2a2a + ikon status bar terang.
  * - Tema terang: status bar putih + ikon status bar gelap (flag 8192).
  * - ActionBar bawaan (AppTheme = DarkActionBar) selalu disembunyikan di
  *   onCreate — aplikasi memakai Toolbar sendiri di layout (bukan ActionBar),

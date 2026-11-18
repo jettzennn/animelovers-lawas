@@ -18,9 +18,11 @@ import kotlinx.coroutines.launch
  * Seksi Manajer Unduhan (ADM) DIHAPUS; switch chat DIHAPUS.
  *
  * Pola simpan: switch notif/WiFi/Ecchi bersifat "pending" sampai tombol
- * Simpan ditekan; Batal membuang perubahan. PENGECUALIAN: tema gelap
- * langsung diterapkan (recreate, tanpa restart aplikasi) saat switch
- * digeser — sesuai desain.md §8.
+ * Simpan ditekan; Batal membuang perubahan.
+ *
+ * v2.0.5 (item 5): switch tema gelap manual DIHAPUS — tema mengikuti
+ * sistem HP (Prefs.isDarkTheme dibaca dari uiMode sistem). Pengaturan
+ * hanya menampilkan baris statis "Tema mengikuti sistem HP".
  *
  * Login: tombol FB/Google memanggil AuthRepository. Selama Firebase belum
  * dipasang (StubAuthRepository), ketukan menampilkan pesan jujur
@@ -55,19 +57,10 @@ class SettingActivity : BaseActivity() {
             pendingEcchi = prefs.ecchiEnabled == "1"
         }
 
-        binding.themeSwitch.isChecked = prefs.isDarkTheme
         binding.notifSwitch.isChecked = pendingNotif
         binding.wifiSwitch.isChecked = pendingWifi
         binding.ecchiSwitch.isChecked = pendingEcchi
 
-        // Tema: langsung diterapkan (recreate) saat digeser.
-        // Pref menyimpan "1" (gelap) / "0" (terang) — pola asli.
-        binding.themeSwitch.setOnCheckedChangeListener { _, isChecked ->
-            if (prefs.isDarkTheme != isChecked) {
-                prefs.theme = if (isChecked) "1" else "0"
-                recreate()
-            }
-        }
         binding.notifSwitch.setOnCheckedChangeListener { _, isChecked ->
             pendingNotif = isChecked
         }

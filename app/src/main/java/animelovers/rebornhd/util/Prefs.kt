@@ -2,6 +2,7 @@ package animelovers.rebornhd.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 
 /**
  * Pembungkus SharedPreferences "animlovers" — nama file + kunci dipertahankan
@@ -12,15 +13,27 @@ import android.content.SharedPreferences
  */
 class Prefs(context: Context) {
 
+    private val appContext: Context = context.applicationContext
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences("animlovers", Context.MODE_PRIVATE)
 
-    /** "1" = tema gelap (default, seperti aslinya), "0" = tema terang. */
-    var theme: String
-        get() = prefs.getString("theme", "1") ?: "1"
-        set(value) = prefs.edit().putString("theme", value).apply()
-
-    val isDarkTheme: Boolean get() = theme == "1"
+    /**
+     * v2.0.5 (item 5): tema mengikuti SISTEM HP — bukan lagi pref manual.
+     * Pref "theme" lama ("1" gelap / "0" terang) sudah DIHAPUS; nilai
+     * tersimpannya di SharedPreferences diabaikan. HP dark → gelap, HP
+     * terang → terang. Dibaca dari uiMode Configuration aplikasi (bukan
+     * dari Activity — supaya konsisten di semua layar). BaseActivity
+     * menerapkannya lewat setTheme() di onCreate; saat tema HP berubah,
+     * sistem membuat ulang activity (tanpa configChanges="uiMode" di
+     * manifest) sehingga tema baru langsung diterapkan.
+     */
+    val isDarkTheme: Boolean
+        get() {
+            val nightMask = appContext.resources.configuration.uiMode and
+                Configuration.UI_MODE_NIGHT_MASK
+            return nightMask == Configuration.UI_MODE_NIGHT_YES
+        }
 
     /** "1" = peringatkan bila streaming tanpa WiFi (default "1"). */
     var wifiSwitch: String

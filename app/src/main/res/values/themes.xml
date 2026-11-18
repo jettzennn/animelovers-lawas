@@ -42,10 +42,18 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <style name="DarkAlert" parent="Theme.AppCompat.Light.Dialog.Alert">
+    <!-- v2.0.5: parent DULU Theme.AppCompat.Light.Dialog.Alert — latar
+         window/decor dialog ikut parent Light (putih), sementara
+         android:background hanya menggelapkan ISI dialog; hasilnya strip
+         putih di kanan dialog (data seluler / WiFi terputus / disclaimer).
+         Parent kini tema dialog GELAP + windowBackground gelap penuh, jadi
+         seluruh jendela dialog gelap. LightAlert JANGAN disentuh. -->
+    <style name="DarkAlert" parent="Theme.AppCompat.Dialog.Alert">
         <item name="android:textColorPrimary">#ffffff</item>
         <item name="android:textColor">@android:color/holo_blue_light</item>
         <item name="android:background">#2b2a2a</item>
+        <item name="android:windowBackground">@color/darktheme</item>
+        <item name="android:colorBackground">@color/darktheme</item>
     </style>
 
     <style name="LightAlert" parent="Theme.AppCompat.Light.Dialog.Alert">

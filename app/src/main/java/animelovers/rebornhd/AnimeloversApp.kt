@@ -1,6 +1,7 @@
 package animelovers.rebornhd
 
 import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
 import animelovers.rebornhd.data.api.SankaTransport
 import animelovers.rebornhd.data.api.SankaWebTransport
 import animelovers.rebornhd.data.auth.AuthRepository
@@ -30,6 +31,18 @@ import kotlinx.coroutines.SupervisorJob
  * tak tertempel tidak memicu onPageFinished di Vivo Faygo.
  */
 class AnimeloversApp : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        // v2.0.5 (item 5): tema aplikasi mengikuti sistem HP
+        // (HP dark → app dark, HP terang → app terang). Dipanggil di sini
+        // — sebelum activity mana pun dibuat — supaya AppCompat ikut
+        // memakai mode malam sistem. Pemilihan tema gelap/terang per
+        // layar tetap lewat prefs.isDarkTheme (dibaca dari uiMode sistem).
+        AppCompatDelegate.setDefaultNightMode(
+            AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        )
+    }
 
     /** Scope aplikasi — untuk kerja yang harus selesai walau Activity sudah
      *  mati (mis. simpan posisi tonton di onDestroy player). */

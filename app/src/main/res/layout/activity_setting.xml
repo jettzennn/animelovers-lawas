@@ -68,15 +68,17 @@
                     android:layout_marginStart="30dp"
                     android:layout_marginEnd="30dp">
 
-                    <Switch
+                    <!-- v2.0.5 (item 5): switch tema manual DIHAPUS — tema
+                         mengikuti sistem HP. Baris statis ini memberi tahu
+                         pengguna, bukan kontrol. -->
+                    <TextView
                         android:textSize="16sp"
                         android:textColor="?attr/textColor"
-                        android:id="@+id/theme_switch"
                         android:background="?attr/bgColor"
                         android:paddingTop="20px"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/tema_gelap" />
+                        android:text="@string/tema_ikut_sistem" />
 
                     <Switch
                         android:textSize="16sp"

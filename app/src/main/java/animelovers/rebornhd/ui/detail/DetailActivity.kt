@@ -86,7 +86,7 @@ class DetailActivity : BaseActivity() {
             placeholder(R.drawable.splashh)
             error(R.drawable.splashh)
         }
-        binding.shimmerViewContainer.startShimmer()
+        binding.shimmerViewContainer.startShimmer() // showShimmer() penuh di load().
 
         episodeAdapter = EpisodeAdapter { episode ->
             openPlayer(episode)
@@ -113,6 +113,10 @@ class DetailActivity : BaseActivity() {
         binding.lainnyaepisodeTxt.setOnClickListener {
             EpisodeActivity.start(this, animeSlug, animeTitle, animePoster)
         }
+        // State error menetap (v2.0.5, temuan Minor Cari Bug): tombol
+        // "Coba lagi" memuat ulang detail — user tidak lagi harus
+        // pull-to-refresh setelah toast error hilang.
+        binding.cobaLagiButton.setOnClickListener { load() }
         binding.swipeContainerDet.setOnRefreshListener { load() }
 
         val openSettings = {
@@ -138,7 +142,49 @@ class DetailActivity : BaseActivity() {
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
         ) 8 else 4
 
+    /**
+     * Skeleton loading (v2.0.5): shimmer HANYA overlay saat loading —
+     * konten TIDAK LAGI di dalam ShimmerFrameLayout (lihat
+     * activity_detail.xml). Tampil saat load pertama / rotasi
+     * (detail == null); saat pull-to-refresh konten sudah ada, jadi
+     * skeleton tidak dimunculkan lagi (spinner swipe saja).
+     */
+    private fun showShimmer() {
+        binding.shimmerViewContainer.visibility = View.VISIBLE
+        binding.shimmerViewContainer.startShimmer()
+    }
+
+    /**
+     * Shimmer MATI SECARA VISUAL (v2.0.5): stopShimmer() saja TIDAK cukup
+     * — dulu wadah shimmer tetap membungkus konten sehingga konten tampak
+     * gelap/redup setelah load. Kini wadahnya di-GONE, jadi konten tampil
+     * bersih. Dipanggil di finally load(): sukses MAUPUN gagal.
+     */
+    private fun hideShimmer() {
+        binding.shimmerViewContainer.stopShimmer()
+        binding.shimmerViewContainer.visibility = View.GONE
+    }
+
+    /**
+     * State error menetap (v2.0.5, temuan Minor Cari Bug): Detail gagal
+     * dulu hanya toast — setelah toast hilang layar cuma judul/poster +
+     * grid kosong dan user harus pull-to-refresh. Kini pesan error +
+     * tombol "Coba lagi" tampil MENETAP sampai load berhasil.
+     * Hanya bila belum ada data (detail == null): bila konten sudah
+     * termuat lalu refresh gagal, konten tetap tampil + toast saja
+     * (jangan tutupi konten bagus dengan layar error).
+     */
+    private fun showError() {
+        binding.errorDetailContainer.visibility = View.VISIBLE
+    }
+
+    private fun hideError() {
+        binding.errorDetailContainer.visibility = View.GONE
+    }
+
     private fun load() {
+        hideError()
+        if (detail == null) showShimmer()
         lifecycleScope.launch {
             try {
                 val data = app().sankaRepository.detail(animeSlug)
@@ -146,12 +192,14 @@ class DetailActivity : BaseActivity() {
                 applyData(data)
             } catch (e: RateLimitException) {
                 toast(getString(R.string.terlalu_banyak_permintaan))
+                if (detail == null) showError()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 toastSankaError(e)
+                if (detail == null) showError()
             } finally {
-                binding.shimmerViewContainer.stopShimmer()
+                hideShimmer()
                 binding.swipeContainerDet.isRefreshing = false
             }
         }

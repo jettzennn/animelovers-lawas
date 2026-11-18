@@ -25,6 +25,10 @@
     <string name="tidak_ditemukan">Tidak ditemukan</string>
     <string name="gagal_memuat">Gagal memuat. Tarik ke bawah untuk mencoba lagi.</string>
     <string name="gagal_memuat_alasan">Gagal memuat (%1$s). Tarik ke bawah untuk mencoba lagi.</string>
+    <!-- State error Detail (v2.0.5, temuan Minor Cari Bug): pesan menetap +
+         tombol Coba lagi — bukan cuma toast + pull-to-refresh. -->
+    <string name="detail_gagal">Gagal memuat detail. Periksa koneksimu lalu coba lagi.</string>
+    <string name="coba_lagi">Coba lagi</string>
     <string name="tidak_ada_koneksi">Tidak ada koneksi internet</string>
 
     <!-- Riwayat -->
@@ -59,10 +63,11 @@
     <string name="memuat_video">Memuat video…</string>
     <string name="terlalu_banyak_permintaan">Terlalu banyak permintaan, coba lagi sebentar lagi</string>
 
-    <!-- Dialog pilih mode (tap episode) -->
-    <string name="pilih_mode">Silakan pilih salah satu mode</string>
+    <!-- v2.0.5: dialog pilih mode DIHAPUS (D1: Unduh pindah ke tombol di
+         kontrol player) — string pilih_mode/streaming ikut dihapus;
+         "unduh" tetap dipakai (tombol unduh + deskripsi DownloadManager).
+         "batal" JANGAN dihapus: dipakai tombol Batal di Pengaturan. -->
     <string name="unduh">Unduh</string>
-    <string name="streaming">Streaming</string>
     <string name="batal">Batal</string>
 
     <!-- Dialog gerbang WiFi -->
@@ -79,7 +84,8 @@
 
     <!-- Pengaturan -->
     <string name="umum">Umum</string>
-    <string name="tema_gelap">Tema gelap</string>
+    <!-- v2.0.5 (item 5): tema mengikuti sistem HP — switch manual dihapus. -->
+    <string name="tema_ikut_sistem">Tema mengikuti sistem HP</string>
     <string name="notifikasi_episode_baru">Notifikasi episode baru</string>
     <string name="notifikasi_koneksi_video">Notifikasi koneksi video</string>
     <string name="masuk">Masuk</string>

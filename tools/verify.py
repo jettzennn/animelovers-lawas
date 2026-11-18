@@ -352,6 +352,187 @@ if not re.search(
         "dari dex Release)"
     )
 
+# ---------- 13. Gerbang v2.0.5 ----------
+# 13a. Dialog mode DIHAPUS (D1: Unduh pindah ke tombol di kontrol player)
+#      — tidak boleh ada lagi `showModeDialog` di Kotlin mana pun.
+for f in kt_files:
+    rel = f.relative_to(ROOT)
+    text = f.read_text(encoding="utf-8")
+    if "showModeDialog" in text:
+        errors.append(
+            f"{rel}: showModeDialog masih ada — dialog mode dihapus di "
+            f"v2.0.5 (D1: Unduh pindah ke tombol di kontrol player)"
+        )
+
+# 13b. DarkAlert WAJIB bertema dialog gelap penuh (v2.0.5 #1): parent
+#      BUKAN Light (strip putih di kanan dialog berasal dari latar
+#      window/decor parent Light) + windowBackground gelap penuh.
+_themes = RES / "values" / "themes.xml"
+_themes_tree = ET.parse(_themes)
+for _style in _themes_tree.getroot().iter("style"):
+    if _style.get("name") != "DarkAlert":
+        continue
+    _parent = _style.get("parent") or ""
+    if "Light" in _parent:
+        errors.append(
+            "themes.xml: parent DarkAlert masih Light "
+            f"({_parent}) — strip putih di kanan dialog kembali; "
+            "pakai Theme.AppCompat.Dialog.Alert"
+        )
+    _window_bg = [
+        _item.text.strip() if _item.text else ""
+        for _item in _style
+        if _item.get("name") == "android:windowBackground"
+    ]
+    if not _window_bg or _window_bg[0] not in ("@color/darktheme", "#2b2a2a"):
+        errors.append(
+            "themes.xml: DarkAlert wajib punya android:windowBackground "
+            "gelap penuh (@color/darktheme) — android:background saja "
+            "hanya menggelapkan isi dialog, bukan jendela dialognya"
+        )
+
+# 13c. Skeleton shimmer Detail TERPISAH dari konten (v2.0.5 #3):
+#      posterDetailView TIDAK BOLEH jadi keturunan ShimmerFrameLayout
+#      (dulu shimmer membungkus seluruh konten → gelap/redup setelah
+#      load), dan DetailActivity WAJIB menyembunyikan shimmer (GONE).
+_detail_xml = RES / "layout" / "activity_detail.xml"
+_detail_tree = ET.parse(_detail_xml)
+_ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
+for _shimmer in _detail_tree.getroot().iter("com.facebook.shimmer.ShimmerFrameLayout"):
+    for _desc in _shimmer.iter():
+        if _desc.get(f"{_ANDROID_NS}id") == "@+id/posterDetailView":
+            errors.append(
+                "activity_detail.xml: posterDetailView masih di dalam "
+                "ShimmerFrameLayout — konten harus di luar shimmer, "
+                "shimmer hanya overlay skeleton saat loading (v2.0.5 #3)"
+            )
+_detail_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "detail" / "DetailActivity.kt"
+).read_text(encoding="utf-8")
+if "shimmerViewContainer.visibility = View.GONE" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: shimmer harus disembunyikan (View.GONE) "
+        "setelah load — stopShimmer() saja tidak mematikan shimmer "
+        "secara visual (v2.0.5 #3)"
+    )
+
+# 13d. Throttle Sanka TIDAK BOLEH berubah (3 pelanggaran = BAN PERMANEN)
+#      + delay Splash 0 (D2) + versi rilis 2.0.5 / versionCode 10.
+_constants = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "Constants.kt"
+).read_text(encoding="utf-8")
+if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
+    errors.append(
+        "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
+        "(batas Sanka 45 req/menit — mengecilkan = risiko BAN PERMANEN)"
+    )
+if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
+    errors.append(
+        "Constants.kt: SPLASH_DELAY_MS wajib 0L di v2.0.5 (D2 — delay "
+        "Splash 2 detik dipotong)"
+    )
+_app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+if not re.search(r"versionCode\s*=\s*10\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 10 untuk v2.0.5")
+if '"2.0.5"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.5"')
+
+# ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
+# Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
+# tombol "Coba lagi" yang memanggil load() — bukan cuma toast + harap
+# pengguna pull-to-refresh.
+_detail_xml_text = _detail_xml.read_text(encoding="utf-8")
+if "@+id/error_detail_container" not in _detail_xml_text:
+    errors.append(
+        "activity_detail.xml: wajib ada wadah state error Detail "
+        "(@+id/error_detail_container) — Detail gagal tidak boleh "
+        "hanya toast (v2.0.5, temuan Minor Cari Bug)"
+    )
+if "@+id/coba_lagi_button" not in _detail_xml_text:
+    errors.append(
+        "activity_detail.xml: wajib ada tombol Coba lagi "
+        "(@+id/coba_lagi_button) di state error Detail"
+    )
+if "cobaLagiButton.setOnClickListener" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: tombol Coba lagi wajib di-wire ke load() "
+        "(cobaLagiButton.setOnClickListener)"
+    )
+if "errorDetailContainer.visibility = View.VISIBLE" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: state error Detail wajib ditampilkan "
+        "(errorDetailContainer VISIBLE) saat load gagal tanpa data"
+    )
+if "errorDetailContainer.visibility = View.GONE" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: state error Detail wajib disembunyikan "
+        "(errorDetailContainer GONE) saat load dimulai/berhasil"
+    )
+
+# ---------- 15. Gerbang v2.0.5 — tema mengikuti sistem HP (item 5) ----------
+# Tema WAJIB dibaca dari uiMode sistem (HP dark → app dark, HP terang →
+# app terang), BUKAN pref manual lagi; AppCompat WAJIB FOLLOW_SYSTEM;
+# kedua tema + kedua style dialog WAJIB tetap ada dan terpilih lewat
+# isDarkTheme yang sama (4 perbaikan #1–#4 tetap lolos di kedua tema).
+_prefs_kt = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "Prefs.kt"
+).read_text(encoding="utf-8")
+if "UI_MODE_NIGHT_MASK" not in _prefs_kt or "UI_MODE_NIGHT_YES" not in _prefs_kt:
+    errors.append(
+        "Prefs.kt: isDarkTheme wajib dibaca dari uiMode sistem "
+        "(UI_MODE_NIGHT_MASK / UI_MODE_NIGHT_YES) — tema mengikuti "
+        "sistem HP (v2.0.5 item 5)"
+    )
+if 'theme == "1"' in _prefs_kt:
+    errors.append(
+        "Prefs.kt: isDarkTheme tidak boleh lagi dibaca dari pref manual "
+        '"theme" ("1"/"0") — tema mengikuti sistem HP (v2.0.5 item 5)'
+    )
+if "val isDarkTheme" not in _prefs_kt:
+    errors.append("Prefs.kt: properti isDarkTheme wajib tetap ada")
+_app_kt = (
+    JAVA / "animelovers" / "rebornhd" / "AnimeloversApp.kt"
+).read_text(encoding="utf-8")
+if "setDefaultNightMode" not in _app_kt or "MODE_NIGHT_FOLLOW_SYSTEM" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: wajib memanggil "
+        "AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_FOLLOW_SYSTEM) "
+        "di onCreate (v2.0.5 item 5)"
+    )
+_setting_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "settings" / "SettingActivity.kt"
+).read_text(encoding="utf-8")
+if "themeSwitch" in _setting_kt or "prefs.theme" in _setting_kt:
+    errors.append(
+        "SettingActivity.kt: switch tema manual wajib dihapus — tema "
+        "mengikuti sistem HP, bukan pref manual (v2.0.5 item 5)"
+    )
+_base_kt = (JAVA / "animelovers" / "rebornhd" / "ui" / "BaseActivity.kt").read_text(
+    encoding="utf-8"
+)
+for _style_ref in (
+    "R.style.DarkTheme", "R.style.LightTheme",
+    "R.style.DarkAlert", "R.style.LightAlert",
+):
+    if _style_ref not in _base_kt:
+        errors.append(
+            f"BaseActivity.kt: {_style_ref} wajib tetap dipakai — kedua "
+            "tema + kedua dialog harus tetap ada (v2.0.5 item 5)"
+        )
+if "DarkTheme" not in defined["style"] or "LightTheme" not in defined["style"]:
+    errors.append(
+        "themes.xml: style DarkTheme + LightTheme wajib tetap ada "
+        "(v2.0.5 item 5)"
+    )
+_manifest_text = MANIFEST.read_text(encoding="utf-8")
+for _cc in re.findall(r'android:configChanges="([^"]*)"', _manifest_text):
+    if "uiMode" in _cc.split("|"):
+        errors.append(
+            "AndroidManifest.xml: tidak boleh ada configChanges uiMode — "
+            "saat tema HP berubah activity harus dibuat ulang sistem "
+            "supaya tema baru diterapkan (v2.0.5 item 5)"
+        )
+
 # ---------- Laporan ----------
 
 print(f"Resource terdefinisi: "

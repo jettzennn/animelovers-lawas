@@ -29,17 +29,19 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <com.facebook.shimmer.ShimmerFrameLayout
-                    android:id="@+id/shimmer_view_container"
+                <!-- v2.0.5: konten TIDAK LAGI di dalam ShimmerFrameLayout.
+                     Dulu shimmer membungkus SELURUH konten dan setelah load
+                     hanya stopShimmer() tanpa menyembunyikan wadahnya —
+                     konten tetap di bawah efek shimmer (tampak gelap/redup).
+                     Konten kini anak langsung ScrollView; skeleton-nya
+                     overlay terpisah di bawah (id sama: shimmer_view_container),
+                     hanya tampil saat loading. Geometri konten TIDAK berubah. -->
+                <RelativeLayout
+                    android:textColor="?attr/textColor"
+                    android:orientation="vertical"
+                    android:background="?attr/bgColor"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent">
-
-                    <RelativeLayout
-                        android:textColor="?attr/textColor"
-                        android:orientation="vertical"
-                        android:background="?attr/bgColor"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content">
+                    android:layout_height="wrap_content">
 
                         <ImageView
                             android:textColor="?attr/textColor"
@@ -207,10 +209,173 @@
                                 android:layout_alignParentStart="false" />
                         </androidx.cardview.widget.CardView>
                     </RelativeLayout>
-                </com.facebook.shimmer.ShimmerFrameLayout>
             </ScrollView>
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        <!-- Skeleton loading Detail (v2.0.5): overlay TERPISAH dari konten,
+             hanya tampil saat loading (detail == null). Setelah applyData()
+             sukses ATAU gagal, DetailActivity menyembunyikannya (GONE) —
+             konten tampil bersih tanpa efek shimmer apa pun. Bentuknya
+             meniru layout konten (poster 350dp + thumb + baris teks +
+             kotak episode) supaya transisi tidak melompat; ini BUKAN
+             konten — semua View di sini tanpa id. Overlay kunci Ecchi +
+             FAB di luar sini, tidak berubah. -->
+        <com.facebook.shimmer.ShimmerFrameLayout
+            android:id="@+id/shimmer_view_container"
+            android:background="?attr/bgColor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <View
+                    android:background="?attr/metaTextColor"
+                    android:alpha="0.35"
+                    android:layout_width="match_parent"
+                    android:layout_height="350dp" />
+
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp">
+
+                    <View
+                        android:background="?attr/metaTextColor"
+                        android:alpha="0.35"
+                        android:layout_width="100dp"
+                        android:layout_height="130dp" />
+
+                    <LinearLayout
+                        android:orientation="vertical"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp">
+
+                        <View
+                            android:background="?attr/metaTextColor"
+                            android:alpha="0.35"
+                            android:layout_width="match_parent"
+                            android:layout_height="24dp" />
+
+                        <View
+                            android:background="?attr/metaTextColor"
+                            android:alpha="0.35"
+                            android:layout_width="180dp"
+                            android:layout_height="14dp"
+                            android:layout_marginTop="8dp" />
+
+                        <View
+                            android:background="?attr/metaTextColor"
+                            android:alpha="0.35"
+                            android:layout_width="140dp"
+                            android:layout_height="14dp"
+                            android:layout_marginTop="8dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View
+                    android:background="?attr/metaTextColor"
+                    android:alpha="0.35"
+                    android:layout_width="match_parent"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginEnd="16dp" />
+
+                <View
+                    android:background="?attr/metaTextColor"
+                    android:alpha="0.35"
+                    android:layout_width="match_parent"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginEnd="16dp" />
+
+                <LinearLayout
+                    android:orientation="horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginEnd="12dp">
+
+                    <View
+                        android:background="?attr/metaTextColor"
+                        android:alpha="0.35"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="40dp"
+                        android:layout_margin="4dp" />
+
+                    <View
+                        android:background="?attr/metaTextColor"
+                        android:alpha="0.35"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="40dp"
+                        android:layout_margin="4dp" />
+
+                    <View
+                        android:background="?attr/metaTextColor"
+                        android:alpha="0.35"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="40dp"
+                        android:layout_margin="4dp" />
+
+                    <View
+                        android:background="?attr/metaTextColor"
+                        android:alpha="0.35"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="40dp"
+                        android:layout_margin="4dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.facebook.shimmer.ShimmerFrameLayout>
     </RelativeLayout>
+
+    <!-- State error menetap (v2.0.5, temuan Minor Cari Bug): dulu Detail
+         gagal hanya toast — setelah toast hilang layar cuma judul/poster +
+         grid kosong dan user harus pull-to-refresh. Kini ada pesan error
+         menetap + tombol "Coba lagi" (memanggil load()). Hanya tampil bila
+         belum ada data (detail == null); bila konten sudah termuat lalu
+         refresh gagal, konten tetap tampil + toast saja. Overlay ini di
+         atas konten tapi di bawah overlay kunci Ecchi + FAB (dideklarasi
+         setelahnya), jadi tombol kembali tetap bisa dipakai. -->
+    <LinearLayout
+        android:id="@+id/error_detail_container"
+        android:visibility="gone"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="?attr/bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/error_detail_text"
+            android:textSize="16sp"
+            android:textColor="?attr/textColor"
+            android:gravity="center"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/detail_gagal" />
+
+        <Button
+            android:id="@+id/coba_lagi_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/coba_lagi" />
+    </LinearLayout>
 
     <!-- Overlay kunci Ecchi (desain.md §5.1). Tampil hanya bila genre mengandung
          "Ecchi" DAN (belum login ATAU toggle Ecchi mati). -->

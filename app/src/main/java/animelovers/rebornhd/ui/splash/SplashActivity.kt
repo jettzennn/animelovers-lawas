@@ -2,6 +2,8 @@ package animelovers.rebornhd.ui.splash
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import animelovers.rebornhd.R
@@ -28,6 +30,10 @@ class SplashActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v2.0.5: ukur rantai render Beranda (D2) — T+0 = Splash tampil.
+        // Baca di logcat: AnimLoversTiming (Splash → Main → home() kembali
+        // → applyData render). Target: Beranda terisi ≤2 detik setelah Main.
+        Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Splash onCreate")
         binding = ActivitySplashBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -56,7 +62,8 @@ class SplashActivity : BaseActivity() {
 
     private fun goToMain() {
         lifecycleScope.launch {
-            delay(Constants.SPLASH_DELAY_MS)
+            delay(Constants.SPLASH_DELAY_MS) // v2.0.5 (D2): 0 — tanpa jeda.
+            Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Splash -> Main")
             startActivity(Intent(this@SplashActivity, MainActivity::class.java))
             finish()
         }

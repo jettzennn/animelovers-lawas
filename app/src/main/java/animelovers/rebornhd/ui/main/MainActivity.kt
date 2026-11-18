@@ -1,6 +1,8 @@
 package animelovers.rebornhd.ui.main
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import animelovers.rebornhd.R
@@ -31,6 +33,9 @@ class MainActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v2.0.5: tonggak ukur rantai render Beranda (D2) — lihat
+        // AnimLoversTiming di logcat (T+0 = Splash onCreate).
+        Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Main onCreate")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -42,6 +47,17 @@ class MainActivity : BaseActivity() {
 
         binding.viewpager.adapter = TabsAdapter(this)
         // Seperti aslinya: semua tab selalu hidup.
+        // v2.0.5 (D3 — DIPUTUSKAN Frontend setelah analisis, bukan malas
+        // dimuat): Jelajahi TIDAK dibuat malas. Alasannya: (a) BrowseFragment
+        // memanggil repo.home() yang sama dan SUDAH di-cache + dedup
+        // Mutex per kunci (SankaRepository.cached) — Home + Jelajahi hanya
+        // menghasilkan SATU request jaringan, jadi Jelajahi tidak menambah
+        // beban jaringan di jalur kritis Beranda; (b) offscreenPageLimit=1
+        // pun tidak menunda Jelajahi — ViewPager2 selalu membuat halaman
+        // tetangga (Beranda 0 → Jelajahi 1), jadi "malas" via limit tidak
+        // berpengaruh apa-apa; (c) malas yang sesungguhnya (load hanya saat
+        // tab dipilih) justru membuat Jelajahi kosong saat pertama dibuka
+        // — persis yang dilarang D3. Yang dipotong hanya delay Splash (D2).
         binding.viewpager.offscreenPageLimit = 10
         TabLayoutMediator(binding.tabs, binding.viewpager) { tab, position ->
             tab.text = when (position) {

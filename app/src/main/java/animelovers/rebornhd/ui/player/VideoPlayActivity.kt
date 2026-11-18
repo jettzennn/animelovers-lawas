@@ -61,9 +61,13 @@ import kotlin.coroutines.cancellation.CancellationException
  * - Resume disimpan posisi − 30 detik saat keluar; orientasi `awallayar`
  *   dipulihkan saat keluar; pref orientasi "6"/"7" (SENSOR_LANDSCAPE/PORTRAIT).
  * - Dialog gerbang WiFi (bila pref wifi_switch "1" dan tidak di WiFi).
- * - Dialog mode "Unduh"/"Streaming" saat masuk dari Detail.
  * - Toggle kualitas biner (ikon `resolution`), panel volume (SeekBar max 255),
  *   auto-play `teruskan`, tombol next/prev dengan overlay _off, rotate.
+ * - v2.0.5: dialog mode "Unduh"/"Streaming" DIHAPUS (penyimpangan disengaja
+ *   dari REA §4.1 atas permintaan Faygo) — masuk player langsung memutar
+ *   kandidat awal; tombol Unduh kini DI KONTROL PLAYER (menu kanan, ikon
+ *   download_new) + bilah atas mode WebView; unduh TIDAK lagi menutup
+ *   player (tonton lanjut sambil mengunduh).
  *
  * v2 (desain.md §14):
  * - TIDAK ADA subtitle track (hardsub menempel di video) — tombol Subtitle
@@ -85,6 +89,7 @@ import kotlin.coroutines.cancellation.CancellationException
  *   masuk WebView — posisi di dalam WebView tidak bisa dibaca).
  * - "Unduh" = file .mp4 langsung dari Pixeldrain (BUKAN .m3u8 seperti v1).
  *   Bila episode tanpa Pixeldrain, tombol Unduh tidak ditampilkan.
+ *   v2.0.5: unduh dari tombol di kontrol player — player TIDAK ditutup.
  * - 429 di dalam player = toast rate limit + keluar (tanpa retry).
  */
 @OptIn(UnstableApi::class)
@@ -210,7 +215,7 @@ class VideoPlayActivity : BaseActivity() {
         if (prefs.wifiSwitch == "1" && !isOnWifi()) {
             showWifiGateDialog()
         } else {
-            loadEpisode(episode, episodeSlug, showModeDialog = true)
+            loadEpisode(episode, episodeSlug)
         }
     }
 
@@ -369,6 +374,9 @@ class VideoPlayActivity : BaseActivity() {
         }
 
         binding.webViewBack.setOnClickListener { saveAndFinish() }
+        // Unduh di bilah atas mode WebView (v2.0.5, D1) — tombol yang sama
+        // seperti di kontrol Media3; visibilitas diatur updateDownloadUi().
+        binding.webViewDownload.setOnClickListener { onDownloadClicked() }
         binding.webViewQuality720.setOnClickListener {
             val all = sources ?: return@setOnClickListener
             val hdIndex = all.candidates.indexOfFirst { it.isHd && !it.isWebView }
@@ -438,12 +446,19 @@ class VideoPlayActivity : BaseActivity() {
         playerView.findViewById<View>(R.id.next_play_png)?.setOnClickListener {
             val next = nextEpisode() ?: return@setOnClickListener
             val slug = nextEpisodeSlug() ?: return@setOnClickListener
-            loadEpisode(next, slug, showModeDialog = false)
+            loadEpisode(next, slug)
         }
         playerView.findViewById<View>(R.id.prev_play_png)?.setOnClickListener {
             val prev = prevEpisode() ?: return@setOnClickListener
             val slug = prevEpisodeSlug() ?: return@setOnClickListener
-            loadEpisode(prev, slug, showModeDialog = false)
+            loadEpisode(prev, slug)
+        }
+
+        // Unduh (v2.0.5, D1): tombol di kontrol player — ganti jalan masuk
+        // lama lewat dialog mode. Hanya tampil bila ada file .mp4
+        // langsung (Pixeldrain); visibilitas diatur updateDownloadUi().
+        playerView.findViewById<View>(R.id.downloadBtn)?.setOnClickListener {
+            onDownloadClicked()
         }
     }
 
@@ -591,7 +606,7 @@ class VideoPlayActivity : BaseActivity() {
 
     // ---- Resolve + putar ----
 
-    private fun loadEpisode(episodeNumber: Int, episodeSlug: String, showModeDialog: Boolean) {
+    private fun loadEpisode(episodeNumber: Int, episodeSlug: String) {
         episode = episodeNumber
         this.episodeSlug = episodeSlug
         binding.exoPlayerView.findViewById<TextView>(R.id.textViewEPISODE)?.text =
@@ -612,6 +627,7 @@ class VideoPlayActivity : BaseActivity() {
         hasFirstFrame = false
         showInitialLoading()
         updateNextPrevButtons()
+        updateDownloadUi()
 
         loadJob = lifecycleScope.launch {
             try {
@@ -631,12 +647,9 @@ class VideoPlayActivity : BaseActivity() {
                     saveAndFinish()
                     return@launch
                 }
-                if (showModeDialog) {
-                    hideInitialLoading()
-                    showModeDialog(resolved)
-                } else {
-                    playCandidate(startIndex)
-                }
+                // v2.0.5: dialog mode DIHAPUS — langsung putar kandidat
+                // awal (pref hdOnly dihormati pickStartCandidate).
+                playCandidate(startIndex)
             } catch (e: RateLimitException) {
                 // 429 di dalam player = toast rate limit + keluar (tanpa retry).
                 hideInitialLoading()
@@ -679,6 +692,7 @@ class VideoPlayActivity : BaseActivity() {
             startMedia3(source, restorePosition)
         }
         updateQualityUi()
+        updateDownloadUi()
     }
 
     /** Kandidat sekarang error → coba kandidat berikutnya; habis → keluar jujur. */
@@ -799,26 +813,27 @@ class VideoPlayActivity : BaseActivity() {
         binding.exoPlayerView.visibility = View.VISIBLE
     }
 
-    private fun showModeDialog(all: EpisodeSources) {
-        val builder = AlertDialog.Builder(this, alertTheme())
-            .setTitle(R.string.pilih_mode)
-            .setPositiveButton(R.string.streaming) { _, _ ->
-                val startIndex = pickStartCandidate(all)
-                if (startIndex >= 0) playCandidate(startIndex)
-            }
-            .setNeutralButton(R.string.batal) { _, _ -> saveAndFinish() }
-            .setCancelable(false)
-        // Unduh HANYA bila ada file .mp4 langsung (Pixeldrain).
-        val downloadUrl = all.downloadUrl
-        if (downloadUrl != null) {
-            builder.setNegativeButton(R.string.unduh) { _, _ ->
-                downloadSource(downloadUrl)
-            }
-        }
-        builder.show()
+    /**
+     * Tombol Unduh di kontrol player / bilah WebView (v2.0.5, D1):
+     * unduh file .mp4 langsung (Pixeldrain) TANPA menutup player —
+     * tonton lanjut selagi mengunduh. Tanpa downloadUrl, tombol
+     * disembunyikan updateDownloadUi() (bukan toast gagal).
+     */
+    private fun onDownloadClicked() {
+        val url = sources?.downloadUrl ?: return
+        downloadSource(url, finishAfter = false)
     }
 
-    private fun downloadSource(url: String) {
+    /** Tombol Unduh tampil hanya bila ada file .mp4 langsung (Pixeldrain). */
+    private fun updateDownloadUi() {
+        val hasDownload = sources?.downloadUrl != null
+        binding.exoPlayerView.findViewById<View>(R.id.downloadBtn)?.visibility =
+            if (hasDownload) View.VISIBLE else View.GONE
+        binding.webViewDownload.visibility =
+            if (hasDownload) View.VISIBLE else View.GONE
+    }
+
+    private fun downloadSource(url: String, finishAfter: Boolean) {
         try {
             // Sanitasi judul: ':' '/' '?' dll. membuat tujuan DownloadManager
             // tidak valid ("Re:Zero", "Fate/stay night"). Tujuan mengikuti
@@ -848,7 +863,9 @@ class VideoPlayActivity : BaseActivity() {
         } catch (e: Exception) {
             toast(getString(R.string.unduhan_gagal))
         }
-        saveAndFinish()
+        // v2.0.5: unduh dari tombol player TIDAK menutup player
+        // (finishAfter=false); pemanggil lama (dialog mode) sudah dihapus.
+        if (finishAfter) saveAndFinish()
     }
 
     private suspend fun resumePositionFor(episodeNumber: Int): Long {
@@ -869,7 +886,7 @@ class VideoPlayActivity : BaseActivity() {
             val next = nextEpisode()
             val slug = nextEpisodeSlug()
             if (next != null && slug != null) {
-                loadEpisode(next, slug, showModeDialog = false)
+                loadEpisode(next, slug)
                 return
             }
         }
@@ -885,7 +902,7 @@ class VideoPlayActivity : BaseActivity() {
             .setTitle(R.string.data_seluler_judul)
             .setMessage(R.string.data_seluler_isi)
             .setPositiveButton(R.string.lanjut) { _, _ ->
-                loadEpisode(episode, episodeSlug, showModeDialog = true)
+                loadEpisode(episode, episodeSlug)
             }
             .setNegativeButton(R.string.tidak) { _, _ -> finish() }
             .setCancelable(false)
