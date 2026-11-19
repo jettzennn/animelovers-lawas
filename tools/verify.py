@@ -1838,6 +1838,23 @@ if "isUserInputEnabled = true" not in _home_kt:
         "ada (geser slide hero tetap jalan — v2.0.9 #9)"
     )
 
+# 20j. Import EventListener Coil BENAR (CI-merah v2.0.9): di Coil 2.5.0
+#      EventListener berada di paket "coil" (coil/EventListener.kt),
+#      BUKAN "coil.listener" — import salah lolos sampai CI karena
+#      harness tidak mengompilasi file ini (butuh kelas Coil) dan
+#      §20f lama hanya mencocokkan string "EventListener".
+if "import coil.EventListener" not in _diag_poster_kt:
+    errors.append(
+        "DiagPosterListener.kt: import coil.EventListener wajib ada "
+        "(EventListener Coil 2.5.0 ada di paket coil, bukan "
+        "coil.listener — CI-merah v2.0.9 run 44449686977)"
+    )
+if "coil.listener" in _diag_poster_kt:
+    errors.append(
+        "DiagPosterListener.kt: coil.listener TIDAK BOLEH ada "
+        "(paket itu tidak ada di Coil 2.5.0 — Unresolved reference)"
+    )
+
 # ---------- Laporan ----------
 
 print(f"Resource terdefinisi: "

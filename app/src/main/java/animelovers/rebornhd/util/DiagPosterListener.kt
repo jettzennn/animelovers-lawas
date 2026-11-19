@@ -1,6 +1,6 @@
 package animelovers.rebornhd.util
 
-import coil.listener.EventListener
+import coil.EventListener
 import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.SuccessResult
