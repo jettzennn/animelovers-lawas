@@ -35,6 +35,10 @@
              gelap = tidak kelihatan. Di DarkTheme, kontrol harus putih. -->
         <item name="colorControlNormal">@color/putih</item>
         <item name="appBarOverlay">@style/AppTheme.AppBarOverlay.Dark</item>
+        <!-- v2.0.9 item 6: warna level Konsol (tema gelap). -->
+        <item name="logErrorColor">#FF8A80</item>
+        <item name="logWarnColor">#FFD54F</item>
+        <item name="logInfoColor">#BDBDBD</item>
     </style>
 
     <!-- Tema terang (pref theme = "0"). -->
@@ -42,6 +46,11 @@
         <item name="bgColor">#ffffff</item>
         <item name="metaTextColor">#606060</item>
         <item name="textColor">#606060</item>
+        <!-- v2.0.9 item 6: warna level Konsol (tema terang) —
+             info = warna teks biasa. -->
+        <item name="logErrorColor">#B71C1C</item>
+        <item name="logWarnColor">#E65100</item>
+        <item name="logInfoColor">?attr/textColor</item>
     </style>
 
     <style name="AppTheme.TransparentTheme" parent="AppTheme">

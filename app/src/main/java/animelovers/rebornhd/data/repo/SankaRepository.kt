@@ -17,6 +17,8 @@ import animelovers.rebornhd.data.model.SankaEpisodeData
 import animelovers.rebornhd.data.model.SankaEpisodeItem
 import animelovers.rebornhd.data.model.SankaHome
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.DiagLogger
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
@@ -115,7 +117,14 @@ class SankaRepository(
      * File(filesDir, "home_cache.json"). Isi: JSON mentah /home.
      * TTL = TTL_HOME_MS (10 menit), diukur dari lastModified file.
      */
-    private val homeDiskFile: File? = null
+    private val homeDiskFile: File? = null,
+    /**
+     * Logger diagnostik (v2.0.9 item 4) — null = tanpa log (dipakai suite
+     * uji). Di aplikasi diisi AnimeloversApp. HANYA mencatat — tidak
+     * menambah request, tidak mengubah retry/throttle, tidak menelan
+     * CancellationException.
+     */
+    private val diagLogger: DiagLogger? = null
 ) {
 
     private val gson = Gson()
@@ -233,6 +242,12 @@ class SankaRepository(
             "$label: data null (status=${envelope.status}, message=${envelope.message}); " +
                 "raw=${raw.take(300)}"
         )
+        // v2.0.9 item 4: data-null ikut ke Konsol — TANPA raw (raw hanya
+        // boleh ke logcat, tidak pernah ke log diagnostik).
+        diagLogger?.warn(
+            DiagLog.TAG_REPO,
+            "$label: data null (status=${envelope.status}, message=${envelope.message})"
+        )
         throw SankaApiErrorException(envelope.status, envelope.message)
     }
 
@@ -241,10 +256,19 @@ class SankaRepository(
         mutex.withLock {
             val entry = cache[key]
             if (entry != null && System.currentTimeMillis() - entry.atMs < ttlMs) {
+                // v2.0.9 item 4: hit cache memori — tanpa jaringan, tanpa ms.
+                diagLogger?.info(DiagLog.TAG_REPO, "$key: cache memori")
                 @Suppress("UNCHECKED_CAST")
                 return entry.value as T
             }
+            val t0 = System.currentTimeMillis()
             val result = block()
+            val ms = System.currentTimeMillis() - t0
+            diagLogger?.info(DiagLog.TAG_REPO, "$key: jaringan ${ms}ms")
+            val slowMs = if (key == "home") DiagLog.SLOW_HOME_MS else DiagLog.SLOW_SEARCH_MS
+            if (ms > slowMs) {
+                diagLogger?.warn(DiagLog.TAG_REPO, "$key: lambat (${ms}ms)")
+            }
             cache[key] = CacheEntry(System.currentTimeMillis(), result)
             return result
         }
@@ -296,6 +320,7 @@ class SankaRepository(
      * CancellationException TIDAK ditangkap — pembatalan harus lolos.
      */
     private suspend fun <T> callWithRetry(
+        endpoint: String,
         block: suspend () -> String,
         parse: (String) -> T
     ): T {
@@ -305,18 +330,53 @@ class SankaRepository(
             try {
                 val raw = block()
                 return parse(raw)
+            } catch (e: RateLimitException) {
+                // 429 — TIDAK PERNAH di-retry (PRD v2 §4.3: 3 pelanggaran =
+                // BAN PERMANEN). Log ERROR supaya penolakan server terlihat.
+                diagLogger?.error(DiagLog.TAG_REPO, "Sanka 429 ($endpoint)")
+                throw e
             } catch (e: SankaHttpException) {
                 if (e.statusCode in 500..599 && attempt < 3) {
                     delay(2_000L * attempt)
                     continue
                 }
+                if (e.statusCode in 500..599) {
+                    diagLogger?.error(
+                        DiagLog.TAG_REPO,
+                        "Sanka $endpoint HTTP ${e.statusCode} setelah 3× retry"
+                    )
+                } else {
+                    diagLogger?.error(
+                        DiagLog.TAG_REPO,
+                        "Sanka $endpoint HTTP ${e.statusCode}"
+                    )
+                }
                 throw e
             } catch (e: JsonSyntaxException) {
                 // Gagal parse = data rusak, bukan gangguan jaringan —
                 // jangan retry (sama seperti converter Retrofit dulu).
+                diagLogger?.error(DiagLog.TAG_REPO, "Sanka $endpoint respons rusak")
                 throw e
+            } catch (e: SankaEmptyResponseException) {
+                // Body kosong — di-retry seperti IOException (perilaku lama),
+                // tapi pesannya jujur: bukan "jaringan gagal".
+                if (attempt >= 3) {
+                    diagLogger?.error(
+                        DiagLog.TAG_REPO,
+                        "Sanka $endpoint respons kosong (3× retry)"
+                    )
+                    throw e
+                }
+                delay(2_000L * attempt)
+                continue
             } catch (e: IOException) {
-                if (attempt >= 3) throw e
+                if (attempt >= 3) {
+                    diagLogger?.error(
+                        DiagLog.TAG_REPO,
+                        "Sanka $endpoint jaringan gagal (3× retry)"
+                    )
+                    throw e
+                }
                 delay(2_000L * attempt)
                 continue
             }
@@ -342,6 +402,7 @@ class SankaRepository(
         // me-Log.e 300 karakter pertamanya saat data null.
         var lastRaw = ""
         val envelope = callWithRetry(
+            "home",
             { transport.getJson("anime/animekompi/home") },
             { raw -> lastRaw = raw; parseEnvelope(raw, SankaHome::class.java) }
         )
@@ -359,7 +420,15 @@ class SankaRepository(
     suspend fun homeFresh(): SankaHome {
         val mutex = mutexFor("home")
         return mutex.withLock {
+            // v2.0.9 item 4: homeFresh TIDAK lewat cached() — ukur di sini
+            // (kalau tidak, fetch segar Beranda tidak pernah tercatat).
+            val t0 = System.currentTimeMillis()
             val data = fetchHomeFromNetwork()
+            val ms = System.currentTimeMillis() - t0
+            diagLogger?.info(DiagLog.TAG_REPO, "home: jaringan ${ms}ms")
+            if (ms > DiagLog.SLOW_HOME_MS) {
+                diagLogger?.warn(DiagLog.TAG_REPO, "home: lambat (${ms}ms)")
+            }
             cache["home"] = CacheEntry(System.currentTimeMillis(), data)
             data
         }
@@ -384,7 +453,8 @@ class SankaRepository(
      */
     suspend fun homeDiskCached(): SankaHome? {
         val file = homeDiskFile ?: return null
-        return try {
+        val t0 = System.currentTimeMillis()
+        val result = try {
             withContext(Dispatchers.IO) {
                 if (!file.exists()) return@withContext null
                 if (System.currentTimeMillis() - file.lastModified() >= TTL_HOME_MS) {
@@ -397,12 +467,22 @@ class SankaRepository(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Cache disk home rusak / tidak bisa dibaca — diabaikan", e)
+            // v2.0.9 item 4: cache disk rusak ikut ke Konsol (file dihapus
+            // supaya tidak dibaca ulang tiap bukaan — perilaku lama).
+            diagLogger?.warn(DiagLog.TAG_REPO, "home: cache disk rusak — dihapus")
             try {
                 withContext(Dispatchers.IO) { file.delete() }
             } catch (ignored: Exception) {
             }
             null
         }
+        if (result != null) {
+            diagLogger?.info(
+                DiagLog.TAG_REPO,
+                "home: cache disk (${System.currentTimeMillis() - t0}ms)"
+            )
+        }
+        return result
     }
 
     /**
@@ -424,6 +504,7 @@ class SankaRepository(
     suspend fun terbaru(page: Int = 1): List<SankaEpisodeItem> =
         cached("terbaru:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
+                "terbaru",
                 { transport.getJson("anime/animekompi/terbaru?page=$page") },
                 { raw -> parseEnvelopeList(raw, SankaEpisodeItem::class.java) }
             )
@@ -433,6 +514,7 @@ class SankaRepository(
     suspend fun search(query: String, page: Int = 1): List<SankaAnime> =
         cached("search:$query:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
+                "search",
                 { transport.getJson("anime/animekompi/search?q=${encodeSegment(query)}&page=$page") },
                 { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )
@@ -457,6 +539,7 @@ class SankaRepository(
     suspend fun genre(slug: String, page: Int = 1): List<SankaAnime> =
         cached("genre:$slug:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
+                "genre",
                 { transport.getJson("anime/animekompi/genre/${encodeSegment(slug)}?page=$page") },
                 { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )
@@ -466,6 +549,7 @@ class SankaRepository(
     suspend fun detail(slug: String): SankaDetail = cached("detail:$slug", TTL_DETAIL_MS) {
         var lastRaw = ""
         val envelope = callWithRetry(
+            "detail",
             { transport.getJson("anime/animekompi/detail/${encodeSegment(slug)}") },
             { raw -> lastRaw = raw; parseEnvelope(raw, SankaDetail::class.java) }
         )
@@ -476,6 +560,7 @@ class SankaRepository(
     suspend fun episode(slug: String): SankaEpisodeData {
         var lastRaw = ""
         val envelope = callWithRetry(
+            "episode",
             { transport.getJson("anime/animekompi/episode/${encodeSegment(slug)}") },
             { raw -> lastRaw = raw; parseEnvelope(raw, SankaEpisodeData::class.java) }
         )

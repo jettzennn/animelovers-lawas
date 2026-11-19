@@ -6,6 +6,8 @@ import animelovers.rebornhd.data.model.PlayableSource
 import animelovers.rebornhd.data.model.SankaEpisodeData
 import animelovers.rebornhd.data.model.SankaEpisodeListItem
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.DiagLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -104,7 +106,12 @@ object HttpFailFast {
  */
 class PlayerRepository(
     private val sankaRepository: SankaRepository,
-    private val samehadakuRepository: SamehadakuRepository
+    private val samehadakuRepository: SamehadakuRepository,
+    /**
+     * Logger diagnostik (v2.0.9 item 4) — null = tanpa log (dipakai suite
+     * uji). HANYA mencatat — tidak mengubah alur / retry / pengecualian.
+     */
+    private val diagLogger: DiagLogger? = null
 ) {
 
     private val bloggerClient = OkHttpClient.Builder()
@@ -202,6 +209,19 @@ class PlayerRepository(
             }
         }
 
+        // v2.0.9 item 4: hitungan per lapis — supaya Konsol menunjukkan
+        // lapis mana yang mengisi kandidat dan mana yang kosong.
+        val directCount = if (episode.sources.orEmpty().any { isPixeldrain(it.url) }) 1 else 0
+        val tokenCount = if (episode.mirrors.orEmpty().any {
+                it.type == "mp4" && isStreamToken(it.url)
+            }) 1 else 0
+        diagLogger?.info(
+            DiagLog.TAG_REPO,
+            "Ep ${episode.episodeNumber}: resolve → " +
+                "${directCount + tokenCount + bloggerUrls.size + okRuUrls.size + samehadakuCandidates.size} kandidat " +
+                "(direct $directCount/token $tokenCount/blogger ${bloggerUrls.size}/" +
+                "ok.ru ${okRuUrls.size}/samehadaku ${samehadakuCandidates.size})"
+        )
         return buildCandidates(episode, bloggerUrls, okRuUrls, samehadakuCandidates)
     }
 
@@ -210,20 +230,34 @@ class PlayerRepository(
      * kandidat direct/token sudah gagal dan sebelum mencoba lapis
      * berikut). Gagal jaringan / bukan Blogger → daftar kosong.
      */
-    suspend fun fetchBloggerCandidates(iframeUrl: String): List<PlayableSource> {
+    suspend fun fetchBloggerCandidates(
+        iframeUrl: String,
+        episodeNumber: Int = 0
+    ): List<PlayableSource> {
         // L-15: JANGAN runCatching di sini — ia menelan
         // CancellationException. Lempar ulang pembatalan.
+        val t0 = System.currentTimeMillis()
         val urls = try {
             fetchBloggerUrls(iframeUrl)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            emptyMap()
+            diagLogger?.warn(
+                DiagLog.TAG_REPO,
+                "${epPrefix(episodeNumber)}Blogger lazy gagal (${e.javaClass.simpleName})"
+            )
+            return emptyList()
         }
-        return buildList {
+        val result = buildList {
             urls[22]?.let { add(PlayableSource(it, PlayableKind.BLOGGER_720, "720p")) }
             urls[18]?.let { add(PlayableSource(it, PlayableKind.BLOGGER_360, "360p")) }
         }
+        diagLogger?.info(
+            DiagLog.TAG_REPO,
+            "${epPrefix(episodeNumber)}Blogger lazy → ${result.size} kandidat " +
+                "(${System.currentTimeMillis() - t0}ms)"
+        )
+        return result
     }
 
     /**
@@ -232,20 +266,34 @@ class PlayerRepository(
      * Samehadaku). Gagal jaringan / bukan ok.ru / tanpa tier →
      * daftar kosong (lanjut ke lapis berikut, bukan error).
      */
-    suspend fun fetchOkRuCandidates(embedUrl: String): List<PlayableSource> {
+    suspend fun fetchOkRuCandidates(
+        embedUrl: String,
+        episodeNumber: Int = 0
+    ): List<PlayableSource> {
         // L-15: JANGAN runCatching di sini — ia menelan
         // CancellationException. Lempar ulang pembatalan.
+        val t0 = System.currentTimeMillis()
         val urls = try {
             fetchOkRuUrls(embedUrl)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            emptyMap()
+            diagLogger?.warn(
+                DiagLog.TAG_REPO,
+                "${epPrefix(episodeNumber)}ok.ru lazy gagal (${e.javaClass.simpleName})"
+            )
+            return emptyList()
         }
-        return buildList {
+        val result = buildList {
             urls["hd"]?.let { add(PlayableSource(it, PlayableKind.OKRU_720, "720p")) }
             urls["sd"]?.let { add(PlayableSource(it, PlayableKind.OKRU_360, "480p")) }
         }
+        diagLogger?.info(
+            DiagLog.TAG_REPO,
+            "${epPrefix(episodeNumber)}ok.ru lazy → ${result.size} kandidat " +
+                "(${System.currentTimeMillis() - t0}ms)"
+        )
+        return result
     }
 
     /**
@@ -259,6 +307,7 @@ class PlayerRepository(
         seriesTitle: String,
         episodeNumber: Int
     ): List<PlayableSource> {
+        val t0 = System.currentTimeMillis()
         val bloggerUrl = try {
             samehadakuRepository.resolveEpisodeUrl(seriesTitle, episodeNumber)
         } catch (e: CancellationException) {
@@ -268,9 +317,20 @@ class PlayerRepository(
             // (launchLazyLayer) supaya jadi toast rate-limit + keluar.
             throw e
         } catch (e: Exception) {
-            null
-        } ?: return emptyList()
-        if (bloggerUrl.isBlank()) return emptyList()
+            diagLogger?.warn(
+                DiagLog.TAG_REPO,
+                "Ep $episodeNumber: Samehadaku lazy gagal (${e.javaClass.simpleName})"
+            )
+            return emptyList()
+        }
+        if (bloggerUrl.isNullOrBlank()) {
+            diagLogger?.info(
+                DiagLog.TAG_REPO,
+                "Ep $episodeNumber: Samehadaku lazy → 0 kandidat " +
+                    "(${System.currentTimeMillis() - t0}ms)"
+            )
+            return emptyList()
+        }
         // L-15: JANGAN runCatching di sini — ia menelan
         // CancellationException. Lempar ulang pembatalan.
         val urls = try {
@@ -278,13 +338,28 @@ class PlayerRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            emptyMap()
+            diagLogger?.warn(
+                DiagLog.TAG_REPO,
+                "Ep $episodeNumber: Samehadaku lazy gagal (${e.javaClass.simpleName})"
+            )
+            return emptyList()
         }
-        return buildList {
+        val result = buildList {
             urls[22]?.let { add(PlayableSource(it, PlayableKind.SAMEHADAKU_720, "720p")) }
             urls[18]?.let { add(PlayableSource(it, PlayableKind.SAMEHADAKU_360, "360p")) }
         }
+        diagLogger?.info(
+            DiagLog.TAG_REPO,
+            "Ep $episodeNumber: Samehadaku lazy → ${result.size} kandidat " +
+                "(${System.currentTimeMillis() - t0}ms)"
+        )
+        return result
     }
+
+    /** Awalan "Ep <n>: " untuk baris log lazy — kosong bila nomor tidak
+     *  diketahui (0, dari pemanggil lama / harness). */
+    private fun epPrefix(episodeNumber: Int): String =
+        if (episodeNumber > 0) "Ep $episodeNumber: " else ""
 
     /** Ada kandidat di atas Blogger (direct 720p atau token 720p)? */
     private fun hasDirectOrToken(episode: SankaEpisodeData): Boolean {

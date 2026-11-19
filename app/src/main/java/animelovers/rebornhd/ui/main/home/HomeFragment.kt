@@ -2,7 +2,6 @@ package animelovers.rebornhd.ui.main.home
 
 import android.os.Bundle
 import android.os.SystemClock
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -25,6 +24,7 @@ import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.episode.LainnyaActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.isOnline
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
@@ -168,14 +168,15 @@ class HomeFragment : Fragment() {
         // repo.homeFresh() (cache + dedup Mutex per kunci) — tidak ada
         // request tambahan, throttle 1,4 dtk tidak tersentuh.
         val repo = requireContext().app().sankaRepository
+        val diagLogger = requireContext().app().diagLogger
         val start = SystemClock.elapsedRealtime()
         val memHome = repo.homeCached()
         if (memHome != null) {
             home = memHome
             applyData()
-            Log.d(
-                "AnimLoversTiming",
-                "T+${SystemClock.elapsedRealtime()} Home render dari cache memori"
+            diagLogger.info(
+                DiagLog.TAG_HOME,
+                "Beranda memori (${SystemClock.elapsedRealtime() - start}ms)"
             )
         }
         viewLifecycleOwner.lifecycleScope.launch {
@@ -185,10 +186,9 @@ class HomeFragment : Fragment() {
                 if (diskHome != null) {
                     home = diskHome
                     applyData()
-                    Log.d(
-                        "AnimLoversTiming",
-                        "T+${SystemClock.elapsedRealtime()} Home render dari disk " +
-                            "(${SystemClock.elapsedRealtime() - start}ms)"
+                    diagLogger.info(
+                        DiagLog.TAG_HOME,
+                        "Beranda disk (${SystemClock.elapsedRealtime() - start}ms)"
                     )
                 }
             }
@@ -204,27 +204,39 @@ class HomeFragment : Fragment() {
             // pull-to-refresh, jadi kegagalan instan terlihat tanpa tanda loading.
             binding.swipeContainerHome.isRefreshing = true
             try {
-                // v2.0.5: tonggak ukur rantai render Beranda (D2) — T+0 =
-                // Splash onCreate (lihat AnimLoversTiming di logcat).
-                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() mulai")
                 // Bila tampilan berasal dari memori yang masih segar,
                 // home() cukup (tanpa jaringan — datanya memang segar).
                 // Bila dari disk / belum ada, homeFresh() memaksa fetch
                 // jaringan — home() biasa akan mengembalikan data disk
                 // (tanpa jaringan) dan tampilan tidak pernah diperbarui.
                 home = if (memHome != null) repo.home() else repo.homeFresh()
-                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home home() kembali")
+                // v2.0.9 item 5: "jaringan" HANYA bila fetch jaringan
+                // benar-benar jalan (memHome == null → homeFresh()).
+                // Bila memHome != null, repo.home() di atas hanya baca
+                // cache memori — tidak ada baris "jaringan" di sini
+                // (baris "memori" sudah dicatat di atas).
+                val ms = SystemClock.elapsedRealtime() - start
+                if (memHome == null) {
+                    diagLogger.info(DiagLog.TAG_HOME, "Beranda jaringan (${ms}ms)")
+                    if (ms > DiagLog.SLOW_HOME_MS) {
+                        diagLogger.warn(DiagLog.TAG_HOME, "Beranda lambat (${ms}ms)")
+                    }
+                }
                 applyData()
-                Log.d("AnimLoversTiming", "T+${SystemClock.elapsedRealtime()} Home applyData selesai (render)")
             } catch (e: RateLimitException) {
                 // Pesan rate limit persis (desain.md §14.3) — jangan
                 // disamarkan jadi "Gagal memuat".
+                diagLogger.error(DiagLog.TAG_HOME, "Beranda 429")
                 requireContext().toast(getString(R.string.terlalu_banyak_permintaan))
             } catch (e: CancellationException) {
                 // Pembatalan (layar ditinggalkan) harus lolos — jangan
                 // ditelan jadi toast "Gagal memuat".
                 throw e
             } catch (e: Exception) {
+                diagLogger.error(
+                    DiagLog.TAG_HOME,
+                    "Beranda gagal (${e.javaClass.simpleName})"
+                )
                 requireContext().toastSankaError(e)
             } finally {
                 if (isAdded) {

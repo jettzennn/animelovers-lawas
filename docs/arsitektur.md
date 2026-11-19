@@ -308,6 +308,58 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
 - v2.0.5 (D1): tombol Unduh di kontrol player (Media3); unduh tidak
   lagi menutup player (dulu lewat dialog mode).
 
+## Konsol Diagnostik (v2.0.9)
+
+- **Tujuan:** membuat error + kelambatan KELIHATAN di dalam aplikasi —
+  konsol hanya mencatat, TIDAK memperbaiki bug dan TIDAK mengubah
+  perilaku putar apa pun (semua hook hanya `diagLogger.info/warn/error`,
+  alur asli tidak disentuh).
+- **Logger murni (`util/DiagLog.kt`):** tanpa satu pun import dari paket
+  Android — `DiagFormat.formatLine`
+  (`yyyy-MM-dd HH:mm:ss.SSS | L | TAG | pesan`),
+  `DiagSanitize.sanitize` (URL lengkap → `host=<host>`; path/query/token/
+  signature TIDAK PERNAH tertulis), `DiagRingBuffer` (cap 500 baris,
+  hysteresis 600→500), `DiagExport.buildHeader` (header file export).
+  Bisa diuji langsung di JVM (harness `TestV209`).
+- **Logger Android (`util/DiagLogger.kt`):** file
+  `filesDir/diag/diag_log.txt` (maks 128 KB, ditulis ulang dari ring
+  buffer bila terlampaui), dimuat ulang saat start — log BERTAHAN antar
+  restart. `StateFlow` untuk tampil live di Konsol; cermin logcat tag
+  `AnimLoversDiag`. Tulis file best-effort (gagal tulis tidak pernah
+  crash aplikasi). TIDAK ADA panggilan jaringan — log TIDAK PERNAH
+  terkirim otomatis; keluar dari HP hanya bila pengguna menekan
+  Bagikan/Simpan. `logCrashSync` menulis jejak crash secara sinkron
+  (proses sedang mati); `exportSnapshot` membuat file
+  `animelovers-log-yyyyMMdd-HHmmss.txt` dengan header (versi dari
+  PackageManager — JANGAN BuildConfig — perangkat, waktu, jumlah baris).
+- **Crash handler (`AnimeloversApp.onCreate`):** handler lama disimpan +
+  di-chain (WAJIB — tanpa itu proses tidak mati + dialog crash sistem
+  tidak muncul) + baris start aplikasi (versi + perangkat).
+- **Hook yang dicatat:** player (`onPlayerError`, watchdog MACET/cap
+  120 dtk, frame pertama + WARN > 10 dtk, `tryNextCandidate`, lapis malas,
+  resolve + 429, WiFi `onLost`); repository (cache hit/miss + ms, 429 →
+  ERROR, 5xx/IO final, data-null TANPA `raw`, Samehadaku 500 → INFO by
+  design, hitungan per lapis, durasi lazy fetch); Beranda/Jelajahi
+  (sumber + ms, search/genre + ms + kosong); poster (SATU `EventListener`
+  global di `newImageLoader` — gagal selalu WARN, sukses > 5 dtk WARN,
+  sukses cepat TIDAK dicatat).
+- **Layar Konsol (`ui/console/ConsoleActivity`):** Toolbar + RecyclerView
+  monospace 12sp + 4 tombol (Bagikan/Simpan/Salin/Hapus) + Switch "Ikuti
+  baris baru" (default ON). Warna level sadar-tema (attr `logErrorColor`/
+  `logWarnColor`/`logInfoColor`, nilai beda Dark/Light). Pintu masuk:
+  baris "Konsol Diagnostik" di Pengaturan setelah `wifi_switch`.
+- **Bagikan/Simpan:** FileProvider `animelovers.rebornhd.fileprovider`
+  (`res/xml/file_paths.xml` HANYA `path="diag/"`); Bagikan lewat chooser
+  sistem (TANPA target hardcode); Simpan DUA JALUR — MediaStore API 29+
+  dan tulis langsung Downloads API 21–28 (HP Faygo API 28); Hapus TANPA
+  dialog konfirmasi.
+- **Privasi (D-privasi-log):** tanpa password, tanpa data pribadi, tanpa
+  URL lengkap/token/signature/`raw`/email — berlaku untuk SEMUA baris log,
+  tanpa kecuali. `requireData` tetap me-`Log.e` 300 karakter `raw` HANYA
+  ke logcat, TIDAK PERNAH ke DiagLogger.
+- **Batasan jujur:** crash fatal hanya best-effort (bisa hilang/terpotong);
+  konsol tidak menggantikan logcat; konsol tidak memperbaiki bug.
+
 ## Yang sengaja TIDAK ada (PRD v2 §13)
 
 Iklan, tombol Request, chat, FCM, ADM, cache video, playback speed, PiP,

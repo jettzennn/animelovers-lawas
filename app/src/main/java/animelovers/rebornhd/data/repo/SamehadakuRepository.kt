@@ -8,6 +8,8 @@ import animelovers.rebornhd.data.model.SamehadakuEpisodeData
 import animelovers.rebornhd.data.model.SamehadakuSearchData
 import animelovers.rebornhd.data.model.SamehadakuSearchItem
 import animelovers.rebornhd.data.model.SankaEnvelope
+import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.DiagLogger
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
@@ -47,7 +49,12 @@ class SamehadakuNotFoundException : Exception("Samehadaku: judul tidak ada")
  * sebagai "lapis ini kosong" dan lanjut ke lapis berikut.
  */
 class SamehadakuRepository(
-    private val transport: SankaTransport
+    private val transport: SankaTransport,
+    /**
+     * Logger diagnostik (v2.0.9 item 4) — null = tanpa log (dipakai suite
+     * uji). HANYA mencatat — tidak mengubah alur / retry / pengecualian.
+     */
+    private val diagLogger: DiagLogger? = null
 ) {
 
     private val gson = Gson()
@@ -100,18 +107,23 @@ class SamehadakuRepository(
      */
     suspend fun resolveEpisodeUrl(seriesTitle: String, episodeNumber: Int): String? {
         if (seriesTitle.isBlank() || episodeNumber <= 0) return null
+        val t0 = System.currentTimeMillis()
 
         // 1. Search Samehadaku — itemnya EPISODE (20 hasil untuk satu judul).
         val searchRaw = try {
             samehadakuGet("anime/samehadaku/search?q=${encodeSegment(seriesTitle)}")
         } catch (e: SamehadakuNotFoundException) {
             Log.d(TAG, "search '$seriesTitle': 500 = tidak ada di Samehadaku")
+            // v2.0.9 item 4: 500 = "judul tidak ada di sumber ini" (by
+            // design, BUKAN error) → INFO, bukan ERROR.
+            diagLogger?.info(DiagLog.TAG_REPO, "Samehadaku: '$seriesTitle' tidak ada (500)")
             return null
         } catch (e: RateLimitException) {
             // L-2: 429 JANGAN ditelan jadi null — lempar ke pemanggil
             // supaya jadi toast rate-limit + keluar (PRD v2.0.7:22),
             // bukan dialog "Putar lewat website?".
             Log.w(TAG, "search Samehadaku 429 — jangan retry")
+            diagLogger?.error(DiagLog.TAG_REPO, "Samehadaku 429 (search)")
             throw e
         } catch (e: CancellationException) {
             throw e
@@ -135,6 +147,11 @@ class SamehadakuRepository(
                 "search '$seriesTitle' ep $episodeNumber: tidak ada pasangan " +
                     "unik (${items.size} item)"
             )
+            diagLogger?.info(
+                DiagLog.TAG_REPO,
+                "Samehadaku: '$seriesTitle' ep $episodeNumber tidak ada " +
+                    "pasangan unik (${items.size} item)"
+            )
             return null
         }
         val slug = match.animeId ?: return null
@@ -144,11 +161,13 @@ class SamehadakuRepository(
             samehadakuGet("anime/samehadaku/episode/${encodeSegment(slug)}")
         } catch (e: SamehadakuNotFoundException) {
             Log.d(TAG, "episode '$slug': 500 = tidak ada di Samehadaku")
+            diagLogger?.info(DiagLog.TAG_REPO, "Samehadaku: '$seriesTitle' tidak ada (500)")
             return null
         } catch (e: RateLimitException) {
             // L-2: sama seperti search di atas — 429 dilempar ulang,
             // bukan ditelan jadi null.
             Log.w(TAG, "episode Samehadaku 429 — jangan retry")
+            diagLogger?.error(DiagLog.TAG_REPO, "Samehadaku 429 (episode)")
             throw e
         } catch (e: CancellationException) {
             throw e
@@ -165,7 +184,15 @@ class SamehadakuRepository(
             Log.w(TAG, "episode Samehadaku: respons tidak bisa dibaca", e)
             null
         }
-        return url?.takeIf { it.isNotBlank() }
+        val result = url?.takeIf { it.isNotBlank() }
+        if (result != null) {
+            diagLogger?.info(
+                DiagLog.TAG_REPO,
+                "Samehadaku: '$seriesTitle' ep $episodeNumber ketemu " +
+                    "(${System.currentTimeMillis() - t0}ms)"
+            )
+        }
+        return result
     }
 
     companion object {

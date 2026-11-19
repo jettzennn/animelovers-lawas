@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider Konsol Diagnostik (v2.0.9 item 7): HANYA folder diag/
+     (log diagnostik + file export) yang boleh dibagikan — tidak ada
+     folder lain yang terekspos. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="diag" path="diag/" />
+</paths>

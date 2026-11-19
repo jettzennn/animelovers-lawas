@@ -106,6 +106,20 @@
     <string name="login_gagal">Masuk gagal. Coba lagi.</string>
     <string name="sudah_keluar">Kamu sudah keluar.</string>
 
+    <!-- Konsol Diagnostik (v2.0.9) -->
+    <string name="konsol_judul">Konsol</string>
+    <string name="konsol_diagnostik">Konsol Diagnostik</string>
+    <string name="konsol_kosong">Belum ada catatan</string>
+    <string name="bagikan_log">Bagikan Log</string>
+    <string name="simpan_log">Simpan Log</string>
+    <string name="salin_log">Salin Log</string>
+    <string name="hapus_log">Hapus Log</string>
+    <string name="ikuti_baris_baru">Ikuti baris baru</string>
+    <string name="log_disalin">Log disalin</string>
+    <string name="log_disimpan">Log disimpan di Unduhan</string>
+    <string name="log_dibersihkan">Log dibersihkan</string>
+    <string name="bagikan_log_gagal">Bagikan log gagal</string>
+
     <!-- Umum -->
     <string name="tekan_kembali_lagi">Tekan Kembali lagi untuk keluar</string>
     <string name="tautan_disalin">Tautan disalin</string>

@@ -11,6 +11,9 @@ import animelovers.rebornhd.data.repo.PlayerRepository
 import animelovers.rebornhd.data.repo.SamehadakuRepository
 import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.DiagLogger
+import animelovers.rebornhd.util.DiagPosterListener
 import animelovers.rebornhd.util.Prefs
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -59,6 +62,25 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
         AppCompatDelegate.setDefaultNightMode(
             AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
         )
+
+        // v2.0.9 item 2: tangkap crash agar jejaknya tersimpan di log
+        // diagnostik (bukan cuma logcat yang hilang saat aplikasi ditutup).
+        // Handler lama WAJIB di-chain — tanpa itu, proses tidak mati +
+        // dialog crash sistem tidak muncul, aplikasi diam dalam keadaan rusak.
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                diagLogger.logCrashSync(thread.name, throwable)
+            } catch (e: Exception) {
+                // Gagal tulis crash log — handler lama tetap jalan.
+            }
+            previousHandler?.uncaughtException(thread, throwable)
+        }
+        diagLogger.info(
+            DiagLog.TAG_APP,
+            "Aplikasi dimulai v${diagLogger.versionName} (${diagLogger.versionCode}) — " +
+                diagLogger.deviceInfo
+        )
     }
 
     /**
@@ -76,6 +98,9 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
      */
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
+            // v2.0.9 item 5: SATU listener poster global — gagal selalu
+            // WARN, sukses > 5 dtk WARN, sukses cepat tidak dicatat.
+            .eventListener(posterListener)
             .okHttpClient {
                 OkHttpClient.Builder()
                     .dispatcher(Dispatcher().apply { maxRequestsPerHost = 3 })
@@ -91,6 +116,12 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
     /** Scope aplikasi — untuk kerja yang harus selesai walau Activity sudah
      *  mati (mis. simpan posisi tonton di onDestroy player). */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Logger diagnostik (v2.0.9): log lokal Konsol — TIDAK PERNAH terkirim otomatis. */
+    val diagLogger: DiagLogger by lazy { DiagLogger(this) }
+
+    /** Poster error listener global (v2.0.9 item 5) — SATU instance dipakai semua Coil. */
+    private val posterListener: DiagPosterListener by lazy { DiagPosterListener(diagLogger) }
 
     val prefs: Prefs by lazy { Prefs(this) }
     val database: AppDatabase by lazy { AppDatabase.get(this) }
@@ -111,7 +142,7 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
         // diukur dari lastModified file (lihat SankaRepository).
         SankaRepository(
             sankaTransport, database.videoDao(), database.favoriteDao(),
-            File(filesDir, "home_cache.json")
+            File(filesDir, "home_cache.json"), diagLogger
         )
     }
 
@@ -119,11 +150,11 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
         // v2.0.7 item 16: adapter Samehadaku memakai TRANSPORT YANG SAMA
         // dengan SankaRepository (throttle + Mutex + timeout 30 dtk
         // berlaku untuk semua sumber — tidak ada client bebas).
-        SamehadakuRepository(sankaRepository.samehadakuTransport())
+        SamehadakuRepository(sankaRepository.samehadakuTransport(), diagLogger)
     }
 
     val playerRepository: PlayerRepository by lazy {
-        PlayerRepository(sankaRepository, samehadakuRepository)
+        PlayerRepository(sankaRepository, samehadakuRepository, diagLogger)
     }
 }
 

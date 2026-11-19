@@ -1,6 +1,7 @@
 package animelovers.rebornhd.ui.main.browse
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.View
@@ -24,6 +25,7 @@ import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.adapter.BrowseListAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
@@ -300,22 +302,71 @@ class BrowseFragment : Fragment() {
         loadingDone = false
         loadJob = viewLifecycleOwner.lifecycleScope.launch {
             binding.swipeContainer.isRefreshing = true
+            val t0 = SystemClock.elapsedRealtime()
+            val kind = when {
+                query.isNotBlank() -> "search"
+                genreFilterSlug != null -> "genre"
+                else -> "default"
+            }
             try {
                 currentItems = when {
                     query.isNotBlank() -> repo.search(query.trim())
                     genreFilterSlug != null -> repo.genre(genreFilterSlug!!)
                     else -> repo.home().browseDefault
                 }
+                // v2.0.9 item 5: hasil + durasi per jenis muatan.
+                val ms = SystemClock.elapsedRealtime() - t0
+                val logger = requireContext().app().diagLogger
+                when (kind) {
+                    "search" -> {
+                        val q = query.trim().take(40)
+                        logger.info(
+                            DiagLog.TAG_JELAJAHI,
+                            "Cari '$q': ${currentItems.size} hasil (${ms}ms)"
+                        )
+                        if (currentItems.isEmpty()) {
+                            logger.warn(DiagLog.TAG_JELAJAHI, "Cari '$q': kosong")
+                        }
+                        if (ms > DiagLog.SLOW_SEARCH_MS) {
+                            logger.warn(DiagLog.TAG_JELAJAHI, "Cari '$q': lambat (${ms}ms)")
+                        }
+                    }
+                    "genre" -> {
+                        val slug = genreFilterSlug ?: "?"
+                        logger.info(
+                            DiagLog.TAG_JELAJAHI,
+                            "Genre '$slug': ${currentItems.size} hasil (${ms}ms)"
+                        )
+                        if (ms > DiagLog.SLOW_SEARCH_MS) {
+                            logger.warn(
+                                DiagLog.TAG_JELAJAHI,
+                                "Genre '$slug': lambat (${ms}ms)"
+                            )
+                        }
+                    }
+                    else -> {
+                        logger.info(
+                            DiagLog.TAG_JELAJAHI,
+                            "Daftar default: ${currentItems.size} item (${ms}ms)"
+                        )
+                    }
+                }
                 rebuildGenres()
                 applyFilter()
             } catch (e: RateLimitException) {
                 if (isAdded) {
+                    requireContext().app().diagLogger.error(
+                        DiagLog.TAG_JELAJAHI, "429 ($kind)"
+                    )
                     requireContext().toast(getString(R.string.terlalu_banyak_permintaan))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
+                    requireContext().app().diagLogger.error(
+                        DiagLog.TAG_JELAJAHI, "gagal (${e.javaClass.simpleName})"
+                    )
                     requireContext().toastSankaError(e)
                 }
             } finally {

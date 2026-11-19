@@ -483,7 +483,7 @@ if "shimmerViewContainer.visibility = View.GONE" not in _detail_kt:
     )
 
 # 13d. Throttle Sanka TIDAK BOLEH berubah (3 pelanggaran = BAN PERMANEN)
-#      + delay Splash 0 (D2) + versi rilis 2.0.8 / versionCode 13.
+#      + delay Splash 0 (D2) + versi rilis 2.0.9 / versionCode 14.
 _constants = (
     JAVA / "animelovers" / "rebornhd" / "util" / "Constants.kt"
 ).read_text(encoding="utf-8")
@@ -498,10 +498,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*13\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 13 untuk v2.0.8")
-if '"2.0.8"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.8"')
+if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9")
+if '"2.0.9"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.9"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -1330,8 +1330,7 @@ if "Video tidak tersedia" in _res_text:
     )
 
 # 18o. Batasan keras TIDAK BOLEH berubah (re-assert §13d/§16f/§17k) +
-#      versi 13 / "2.0.8" (v2.0.8; cek "versionCode 13 dilarang" dari
-#      v2.0.7 DIHAPUS — 13 kini versi yang benar).
+#      versi 14 / "2.0.9" (v2.0.9 — 14 kini versi yang benar).
 if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
     errors.append(
         "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
@@ -1347,13 +1346,13 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*13\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib 13 untuk v2.0.8"
+        "app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9"
     )
-if '"2.0.8"' not in _app_gradle:
+if '"2.0.9"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib "2.0.8"'
+        'app/build.gradle.kts: versionName wajib "2.0.9"'
     )
 
 # 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
@@ -1613,6 +1612,230 @@ if "toast(getString(R.string.gagal_memutar, episode))" not in _video_kt:
     errors.append(
         "VideoPlayActivity.kt: ujung gagal wajib toast gagal_memutar "
         "(v2.0.8 item 5)"
+    )
+
+# ---------- 20. Gerbang v2.0.9 — Konsol Diagnostik ----------
+_diag_log_kt = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "DiagLog.kt"
+).read_text(encoding="utf-8")
+_diag_logger_kt = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "DiagLogger.kt"
+).read_text(encoding="utf-8")
+_diag_poster_kt = (
+    JAVA / "animelovers" / "rebornhd" / "util" / "DiagPosterListener.kt"
+).read_text(encoding="utf-8")
+
+# 20a. Logger murni + tanpa jaringan: DiagLog.kt ada + berisi formatLine /
+#      sanitize / MAX_DIAG_LINES = 500; DiagLogger.kt ada; `android.`
+#      TIDAK ADA di DiagLog.kt (murni — harus bisa dikompilasi harness
+#      JVM); SankaTransport/OkHttpClient/transport.getJson TIDAK ADA di
+#      DiagLogger.kt (Logger tidak menambah panggilan Sanka).
+for _fn in ("fun formatLine", "fun sanitize", "MAX_DIAG_LINES = 500"):
+    if _fn not in _diag_log_kt:
+        errors.append(
+            f"DiagLog.kt: {_fn} wajib ada (logger murni — v2.0.9 item 1)"
+        )
+if "android." in _diag_log_kt:
+    errors.append(
+        "DiagLog.kt: TIDAK BOLEH ada `android.` — file ini murni "
+        "(harus bisa dikompilasi harness JVM tanpa Android — v2.0.9 item 1)"
+    )
+for _bad in ("SankaTransport", "OkHttpClient", "transport.getJson"):
+    if _bad in _diag_logger_kt:
+        errors.append(
+            f"DiagLogger.kt: {_bad} dilarang — Logger tidak boleh "
+            "menambah panggilan Sanka (throttle 45/menit tetap utuh — "
+            "v2.0.9 item 1)"
+        )
+
+# 20b. Crash handler: setDefaultUncaughtExceptionHandler ADA di
+#      AnimeloversApp.kt + handler lama disimpan dan dipanggil kembali
+#      (chain — handler default TIDAK BOLEH ditelan).
+if "setDefaultUncaughtExceptionHandler" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: setDefaultUncaughtExceptionHandler wajib ada "
+        "(crash handler — v2.0.9 item 2)"
+    )
+if "getDefaultUncaughtExceptionHandler" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: handler crash lama wajib disimpan lewat "
+        "getDefaultUncaughtExceptionHandler (v2.0.9 item 2)"
+    )
+if "uncaughtException(thread, throwable)" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: handler crash lama WAJIB di-chain "
+        "(previousHandler?.uncaughtException — tanpa itu proses tidak "
+        "mati + dialog crash sistem tidak muncul — v2.0.9 item 2)"
+    )
+if "logCrashSync" not in _app_kt:
+    errors.append(
+        "AnimeloversApp.kt: crash handler wajib menulis jejak lewat "
+        "logCrashSync (v2.0.9 item 2)"
+    )
+
+# 20c. FileProvider: androidx.core.content.FileProvider ADA di manifest +
+#      authorities animelovers.rebornhd.fileprovider + file_paths.xml ADA
+#      + berisi path="diag/" + TIDAK berisi path="." (itu mengekspos
+#      home_cache.json + file lain di filesDir).
+if "androidx.core.content.FileProvider" not in _manifest_text:
+    errors.append(
+        "AndroidManifest.xml: FileProvider wajib ada (berbagi file log — "
+        "v2.0.9 item 7)"
+    )
+if 'android:authorities="animelovers.rebornhd.fileprovider"' not in _manifest_text:
+    errors.append(
+        "AndroidManifest.xml: authorities FileProvider wajib "
+        "animelovers.rebornhd.fileprovider (v2.0.9 item 7)"
+    )
+_file_paths = RES / "xml" / "file_paths.xml"
+if not _file_paths.exists():
+    errors.append(
+        "res/xml/file_paths.xml wajib ada (FileProvider Konsol — "
+        "v2.0.9 item 7)"
+    )
+else:
+    _file_paths_text = _file_paths.read_text(encoding="utf-8")
+    if 'path="diag/"' not in _file_paths_text:
+        errors.append(
+            'res/xml/file_paths.xml: wajib berisi path="diag/" '
+            "(hanya folder log yang terekspos — v2.0.9 item 7)"
+        )
+    if 'path="."' in _file_paths_text:
+        errors.append(
+            'res/xml/file_paths.xml: path="." dilarang — itu mengekspos '
+            "home_cache.json + file lain di filesDir (v2.0.9 item 7)"
+        )
+
+# 20d. Konsol terdaftar + pintu masuk: ConsoleActivity ADA di manifest +
+#      file ui/console/ConsoleActivity.kt ADA + consoleButton ADA di
+#      SettingActivity.kt + ConsoleActivity.start dipanggil dari sana +
+#      layout activity_console.xml ADA.
+if "ConsoleActivity" not in _manifest_text:
+    errors.append(
+        "AndroidManifest.xml: ConsoleActivity wajib didaftarkan "
+        "(v2.0.9 item 6)"
+    )
+if not (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "console" / "ConsoleActivity.kt"
+).exists():
+    errors.append(
+        "ui/console/ConsoleActivity.kt wajib ada (v2.0.9 item 6)"
+    )
+if "consoleButton" not in _setting_kt:
+    errors.append(
+        "SettingActivity.kt: consoleButton wajib ada (pintu masuk "
+        "Konsol di Pengaturan — v2.0.9 item 6)"
+    )
+if "ConsoleActivity.start" not in _setting_kt:
+    errors.append(
+        "SettingActivity.kt: wajib memanggil ConsoleActivity.start "
+        "(pintu masuk Konsol — v2.0.9 item 6)"
+    )
+if "activity_console" not in defined["layout"]:
+    errors.append(
+        "res/layout/activity_console.xml wajib ada (v2.0.9 item 6)"
+    )
+
+# 20e. Privasi: userEmail/emailUser TIDAK ADA di DiagLogger.kt +
+#      DiagLog.kt; DiagLogger TIDAK PERNAH dipanggil dengan variabel
+#      `raw` (grep DiagLogger.*\braw\b = 0 di semua .kt); sanitize(
+#      ADA di dalam DiagLogger.kt (dipaksa di jalur log); string
+#      "Video tidak tersedia" TETAP 0 (re-assert §18i).
+for _bad in ("userEmail", "emailUser"):
+    if _bad in _diag_logger_kt or _bad in _diag_log_kt:
+        errors.append(
+            f"DiagLogger.kt/DiagLog.kt: {_bad} dilarang — email pengguna "
+            "tidak boleh masuk log diagnostik (v2.0.9 item 1, D-privasi-log)"
+        )
+for _f in kt_files:
+    _t = _f.read_text(encoding="utf-8", errors="replace")
+    for _i, _line in enumerate(_t.split("\n"), start=1):
+        if re.search(r"DiagLogger.*\braw\b", _line):
+            errors.append(
+                f"{_f.relative_to(ROOT)}:{_i}: DiagLogger tidak boleh "
+                "dipanggil dengan variabel `raw` — payload mentah "
+                "dilarang di Konsol (hanya ke logcat, di requireData — "
+                "v2.0.9 item 1, D-privasi-log)"
+            )
+if "sanitize(" not in _diag_logger_kt:
+    errors.append(
+        "DiagLogger.kt: sanitize( wajib ada — semua pesan log harus "
+        "lewat sanitasi URL (v2.0.9 item 1, D-privasi-log)"
+    )
+if "Video tidak tersedia" in _all_kt or "Video tidak tersedia" in _res_text:
+    errors.append(
+        'string "Video tidak tersedia" tetap dilarang — ditolak Faygo '
+        "sebagai solusi (re-assert §18i — v2.0.9)"
+    )
+
+# 20f. Hook hadir: string diagLogger/DiagLogger ADA di TIAP file hook —
+#      VideoPlayActivity.kt, PlayerRepository.kt, SankaRepository.kt,
+#      SamehadakuRepository.kt, HomeFragment.kt, BrowseFragment.kt,
+#      AnimeloversApp.kt — + EventListener ADA di AnimeloversApp.kt atau
+#      DiagPosterListener.kt (hook poster).
+for _name, _text in (
+    ("VideoPlayActivity.kt", _video_kt),
+    ("PlayerRepository.kt", _player_repo_kt),
+    ("SankaRepository.kt", _repo_kt),
+    ("SamehadakuRepository.kt", _samehadaku_kt),
+    ("HomeFragment.kt", _home_kt),
+    ("BrowseFragment.kt", _browse_kt),
+    ("AnimeloversApp.kt", _app_kt),
+):
+    if "diagLogger" not in _text and "DiagLogger" not in _text:
+        errors.append(
+            f"{_name}: diagLogger/DiagLogger wajib ada (hook Konsol — "
+            "v2.0.9 item 3/4/5)"
+        )
+if "EventListener" not in _app_kt and "EventListener" not in _diag_poster_kt:
+    errors.append(
+        "AnimeloversApp.kt/DiagPosterListener.kt: EventListener Coil "
+        "wajib ada (hook poster — v2.0.9 item 5)"
+    )
+
+# 20g. Cap ditegakkan: MAX_DIAG_LINES = 500 + logika trim ADA di
+#      DiagLogger.kt/DiagLog.kt (drop( atau removeFirst — salah satu
+#      harus ada); export header ADA (versionName + Build.MODEL +
+#      Build.VERSION.RELEASE di kode export).
+_diag_combined = _diag_log_kt + "\n" + _diag_logger_kt
+if "MAX_DIAG_LINES = 500" not in _diag_combined:
+    errors.append(
+        "DiagLog.kt/DiagLogger.kt: MAX_DIAG_LINES = 500 wajib ada "
+        "(cap 500 baris — v2.0.9 item 1)"
+    )
+if "drop(" not in _diag_combined and "removeFirst" not in _diag_combined:
+    errors.append(
+        "DiagLog.kt/DiagLogger.kt: logika trim wajib ada (drop( atau "
+        "removeFirst — cap tidak boleh hanya angka — v2.0.9 item 1)"
+    )
+for _h in ("versionName", "Build.MODEL", "Build.VERSION.RELEASE"):
+    if _h not in _diag_logger_kt:
+        errors.append(
+            f"DiagLogger.kt: header export wajib memuat {_h} "
+            "(v2.0.9 item 7)"
+        )
+
+# 20h. Versi: §13d + §18o naik ke 14 / "2.0.9" (re-assert — gerbang
+#      versi harus lolos SETELAH bump; pola v2.0.8: §13d ikut naik).
+if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9")
+if '"2.0.9"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.9"')
+
+# 20i. Swipe tab dimatikan (v2.0.9 #9): "isUserInputEnabled = false"
+#      ADA di MainActivity.kt (navigasi tab hanya lewat ketuk TabLayout);
+#      carousel "isUserInputEnabled = true" di HomeFragment.kt TIDAK
+#      BOLEH ikut dimatikan (auto-scroll + geser slide tetap jalan).
+if "isUserInputEnabled = false" not in _main_kt:
+    errors.append(
+        "MainActivity.kt: viewpager.isUserInputEnabled = false wajib ada "
+        "(swipe tab dimatikan — geser di baris/carousel tidak boleh "
+        "pindah tab — v2.0.9 #9)"
+    )
+if "isUserInputEnabled = true" not in _home_kt:
+    errors.append(
+        "HomeFragment.kt: carousel isUserInputEnabled = true wajib tetap "
+        "ada (geser slide hero tetap jalan — v2.0.9 #9)"
     )
 
 # ---------- Laporan ----------

@@ -14,7 +14,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.os.Environment
-import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.widget.SeekBar
@@ -50,6 +49,7 @@ import animelovers.rebornhd.data.repo.StallTracker
 import animelovers.rebornhd.databinding.ActivityVideoBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.isOnWifi
 import animelovers.rebornhd.util.toast
 import coil.load
@@ -230,9 +230,6 @@ class VideoPlayActivity : BaseActivity() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     companion object {
-        /** Tag logcat rantai putar (v2.0.7 #8) — kandidat + transisi state + stall. */
-        private const val TAG_PLAYER = "AnimLoversPlayer"
-
         /** Pengawas macet-buffering (v2.0.7 #8): cek tiap 10 dtk. */
         private const val STALL_CHECK_INTERVAL_MS = 10_000L
 
@@ -363,12 +360,22 @@ class VideoPlayActivity : BaseActivity() {
                         if (!hasFirstFrame) {
                             hasFirstFrame = true
                             hideInitialLoading()
-                            Log.d(
-                                TAG_PLAYER,
-                                "Ep $episode: frame pertama setelah " +
-                                    "${SystemClock.elapsedRealtime() - candidateStartedAtMs}ms " +
+                            // v2.0.9 item 3: frame pertama dicatat (durasi
+                            // sejak kandidat mulai) — WARN bila > 10 dtk.
+                            // Cermin logcat dikerjakan DiagLogger.
+                            val firstFrameMs =
+                                SystemClock.elapsedRealtime() - candidateStartedAtMs
+                            app().diagLogger.info(
+                                DiagLog.TAG_PLAYER,
+                                "Ep $episode: frame pertama setelah ${firstFrameMs}ms " +
                                     "(kandidat ${currentSource?.kind})"
                             )
+                            if (firstFrameMs > DiagLog.SLOW_FIRST_FRAME_MS) {
+                                app().diagLogger.warn(
+                                    DiagLog.TAG_PLAYER,
+                                    "Ep $episode: frame pertama lambat (${firstFrameMs}ms)"
+                                )
+                            }
                         }
                     }
                     Player.STATE_BUFFERING -> {
@@ -459,8 +466,10 @@ class VideoPlayActivity : BaseActivity() {
                 // (jeda 0,1,2,3,4,5,5 dtk, maks ~20 dtk/kandidat).
                 // onPlayerError ini baru tiba SETELAH retry itu habis
                 // (untuk transient) atau langsung (untuk 451/404/410).
-                Log.w(
-                    TAG_PLAYER,
+                // v2.0.9 item 3: error kandidat dicatat (tanpa URL — token
+                // stream sensitif; hanya jenis error + penyebabnya).
+                app().diagLogger.error(
+                    DiagLog.TAG_PLAYER,
                     "Ep $episode: error kandidat ${source.kind} setelah " +
                         "${SystemClock.elapsedRealtime() - candidateStartedAtMs}ms " +
                         "(${error.errorCodeName}, ${error.cause?.javaClass?.simpleName})"
@@ -664,7 +673,7 @@ class VideoPlayActivity : BaseActivity() {
         lazyLayerJob?.cancel()
         lazyLayerJob = lifecycleScope.launch {
             val blogger = try {
-                app().playerRepository.fetchBloggerCandidates(iframeUrl)
+                app().playerRepository.fetchBloggerCandidates(iframeUrl, episode)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -841,8 +850,8 @@ class VideoPlayActivity : BaseActivity() {
                 if (StallTracker.isGrowth(growth, STALL_MIN_GROWTH_MS)) {
                     lastGrowthAt = now
                 } else if (now - lastGrowthAt >= STALL_NO_GROWTH_MS) {
-                    Log.w(
-                        TAG_PLAYER,
+                    app().diagLogger.warn(
+                        DiagLog.TAG_PLAYER,
                         "Ep $episode: kandidat ${candidate.kind} MACET — buffer " +
                             "tumbuh di bawah ambang ${STALL_MIN_GROWTH_MS}ms/cek " +
                             "selama ${STALL_NO_GROWTH_MS / 1000} dtk " +
@@ -852,8 +861,8 @@ class VideoPlayActivity : BaseActivity() {
                     break
                 }
                 if (now - startedAt >= STALL_MAX_MS) {
-                    Log.w(
-                        TAG_PLAYER,
+                    app().diagLogger.warn(
+                        DiagLog.TAG_PLAYER,
                         "Ep $episode: kandidat ${candidate.kind} buffering " +
                             "${STALL_MAX_MS / 1000} dtk tanpa frame pertama — " +
                             "lanjut ke kandidat berikut"
@@ -960,8 +969,23 @@ class VideoPlayActivity : BaseActivity() {
         updateDownloadUi()
 
         loadJob = lifecycleScope.launch {
+            // v2.0.9 item 3: durasi resolve dicatat (termasuk fetch eager
+            // lapis 2–3 bila lapis 1 kosong) — WARN bila > 10 dtk.
+            val resolveStartedAtMs = SystemClock.elapsedRealtime()
             try {
                 val resolved = app().playerRepository.resolve(episodeSlug)
+                val resolveMs = SystemClock.elapsedRealtime() - resolveStartedAtMs
+                app().diagLogger.info(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: resolve selesai ${resolveMs}ms, " +
+                        "${resolved.candidates.size} kandidat"
+                )
+                if (resolveMs > DiagLog.SLOW_RESOLVE_MS) {
+                    app().diagLogger.warn(
+                        DiagLog.TAG_PLAYER,
+                        "Ep $episode: resolve lambat (${resolveMs}ms)"
+                    )
+                }
                 sources = resolved
                 episodeNumbers = resolved.episodeList
                     .map { it.number }.filter { it > 0 }.distinct().sorted()
@@ -982,12 +1006,17 @@ class VideoPlayActivity : BaseActivity() {
                 playCandidate(startIndex)
             } catch (e: RateLimitException) {
                 // 429 di dalam player = toast rate limit + keluar (tanpa retry).
+                app().diagLogger.error(DiagLog.TAG_PLAYER, "Ep $episode: 429 saat resolve")
                 hideInitialLoading()
                 toast(getString(R.string.terlalu_banyak_permintaan))
                 saveAndFinish()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                app().diagLogger.error(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: resolve gagal (${e.javaClass.simpleName})"
+                )
                 hideInitialLoading()
                 toast(getString(R.string.gagal_memutar, episode))
                 saveAndFinish()
@@ -1026,9 +1055,9 @@ class VideoPlayActivity : BaseActivity() {
         candidateStartedAtMs = SystemClock.elapsedRealtime()
         stopStallWatch()
         // Log TANPA URL (token stream sensitif) — host saja cukup untuk
-        // membedakan Pixeldrain / token / Blogger di logcat.
-        Log.d(
-            TAG_PLAYER,
+        // membedakan Pixeldrain / token / Blogger di Konsol.
+        app().diagLogger.info(
+            DiagLog.TAG_PLAYER,
             "Ep $episode: putar kandidat #$index kind=${source.kind} " +
                 "label=${source.qualityLabel} host=${hostOf(source.url)}"
         )
@@ -1050,17 +1079,21 @@ class VideoPlayActivity : BaseActivity() {
     private fun tryNextCandidate() {
         val all = sources ?: return
         val nextIndex = candidateIndex + 1
-        Log.d(
-            TAG_PLAYER,
-            "Ep $episode: kandidat #$candidateIndex (${currentSource?.kind}) " +
-                "habis — coba #$nextIndex"
-        )
         if (nextIndex < all.candidates.size) {
+            app().diagLogger.warn(
+                DiagLog.TAG_PLAYER,
+                "Ep $episode: kandidat #$candidateIndex (${currentSource?.kind}) " +
+                    "habis — coba #$nextIndex"
+            )
             val restore = player?.currentPosition ?: 0L
             playCandidate(nextIndex, restore)
             return
         }
         if (tryLazyLayer()) return
+        app().diagLogger.error(
+            DiagLog.TAG_PLAYER,
+            "Ep $episode: semua kandidat habis — gagal"
+        )
         toast(getString(R.string.gagal_memutar, episode))
         saveAndFinish()
     }
@@ -1080,8 +1113,12 @@ class VideoPlayActivity : BaseActivity() {
             bloggerAttemptedFallback = true
             val iframeUrl = all.bloggerIframeUrl
             if (!iframeUrl.isNullOrBlank()) {
+                app().diagLogger.warn(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: kandidat habis — lapis malas Blogger"
+                )
                 launchLazyLayer("Blogger") {
-                    app().playerRepository.fetchBloggerCandidates(iframeUrl)
+                    app().playerRepository.fetchBloggerCandidates(iframeUrl, episode)
                 }
                 return true
             }
@@ -1091,8 +1128,12 @@ class VideoPlayActivity : BaseActivity() {
             okRuAttemptedFallback = true
             val okRuUrl = all.okRuEmbedUrl
             if (!okRuUrl.isNullOrBlank()) {
+                app().diagLogger.warn(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: kandidat habis — lapis malas ok.ru"
+                )
                 launchLazyLayer("ok.ru") {
-                    app().playerRepository.fetchOkRuCandidates(okRuUrl)
+                    app().playerRepository.fetchOkRuCandidates(okRuUrl, episode)
                 }
                 return true
             }
@@ -1103,6 +1144,10 @@ class VideoPlayActivity : BaseActivity() {
             val title = all.animeTitle
             if (title.isNotBlank()) {
                 val episodeNumber = all.episodeNumber
+                app().diagLogger.warn(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: kandidat habis — lapis malas Samehadaku"
+                )
                 launchLazyLayer("Samehadaku") {
                     app().playerRepository.fetchSamehadakuCandidates(
                         title, episodeNumber
@@ -1138,6 +1183,10 @@ class VideoPlayActivity : BaseActivity() {
             } catch (e: RateLimitException) {
                 // L-2: 429 di lapis mana pun = toast rate-limit + keluar
                 // (tanpa retry).
+                app().diagLogger.error(
+                    DiagLog.TAG_PLAYER,
+                    "Ep $episode: 429 di lapis $layerName"
+                )
                 hideInitialLoading()
                 toast(getString(R.string.terlalu_banyak_permintaan))
                 saveAndFinish()
@@ -1145,7 +1194,10 @@ class VideoPlayActivity : BaseActivity() {
             } catch (e: Exception) {
                 emptyList()
             }
-            Log.d(TAG_PLAYER, "Ep $episode: $layerName lazy → ${found.size} kandidat")
+            app().diagLogger.info(
+                DiagLog.TAG_PLAYER,
+                "Ep $episode: $layerName lazy → ${found.size} kandidat"
+            )
             // Episode sudah berganti selagi fetch berjalan — abaikan
             // (jangan menulis kandidat ke sources episode baru).
             if (sources !== snapshot) return@launch
@@ -1321,6 +1373,10 @@ class VideoPlayActivity : BaseActivity() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onLost(network: Network) {
                 if (!isOnWifi() && !wifiDialogShown && player?.isPlaying == true) {
+                    app().diagLogger.warn(
+                        DiagLog.TAG_PLAYER,
+                        "WiFi terputus saat memutar Ep $episode"
+                    )
                     wifiDialogShown = true
                     runOnUiThread { showWifiLostDialog() }
                 }

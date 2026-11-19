@@ -7,4 +7,9 @@
     <!-- v2.0.7 #2: overlay AppBar sadar-tema — AppTheme menunjuk overlay
          terang, DarkTheme menunjuk overlay gelap (AppTheme.AppBarOverlay.Dark). -->
     <attr name="appBarOverlay" format="reference" />
+    <!-- v2.0.9 item 6: warna level baris Konsol — nilai beda Dark/Light
+         (lihat themes.xml): error merah, warn kuning/oranye, info = teks biasa. -->
+    <attr name="logErrorColor" format="color" />
+    <attr name="logWarnColor" format="color" />
+    <attr name="logInfoColor" format="color" />
 </resources>

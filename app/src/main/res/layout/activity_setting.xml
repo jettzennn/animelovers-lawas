@@ -99,6 +99,20 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/notifikasi_koneksi_video" />
+
+                    <!-- v2.0.9 item 6: pintu masuk Konsol Diagnostik —
+                         baris ketuk (seperti rateus di bawah), bukan switch. -->
+                    <TextView
+                        android:textSize="16sp"
+                        android:textColor="?attr/textColor"
+                        android:id="@+id/console_button"
+                        android:background="?attr/bgColor"
+                        android:paddingTop="20px"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/konsol_diagnostik"
+                        android:clickable="true"
+                        android:focusable="true" />
                 </LinearLayout>
             </LinearLayout>
 

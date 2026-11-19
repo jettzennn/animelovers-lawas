@@ -46,6 +46,15 @@ class MainActivity : BaseActivity() {
         app().sankaTransport.attachToWindow(this)
 
         binding.viewpager.adapter = TabsAdapter(this)
+        // v2.0.9 #9 — BUG GESER PINDAH TAB: swipe antar tab DIMATIKAN.
+        // ViewPager2 tidak seperti ViewPager v1 asli: ia mencegat gestur
+        // horizontal hanya berdasarkan touch slop, tanpa memeriksa apakah
+        // anak di bawah jari masih bisa digeser. Akibatnya geser di baris
+        // yang sudah mentok — dan SEMUA geser manual di carousel hero
+        // (ViewPager2 di dalam ViewPager2, slop sama) — direbut tab dan
+        // pindah ke Jelajahi. Navigasi tab tetap lewat ketuk TabLayout
+        // (TabLayoutMediator) — cara yang dipakai Faygo di HP.
+        binding.viewpager.isUserInputEnabled = false
         // Seperti aslinya: semua tab selalu hidup.
         // v2.0.5 (D3 — DIPUTUSKAN Frontend setelah analisis, bukan malas
         // dimuat): Jelajahi TIDAK dibuat malas. Alasannya: (a) BrowseFragment

@@ -8,6 +8,7 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.app
 import animelovers.rebornhd.databinding.ActivitySettingBinding
 import animelovers.rebornhd.ui.BaseActivity
+import animelovers.rebornhd.ui.console.ConsoleActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
@@ -85,6 +86,7 @@ class SettingActivity : BaseActivity() {
         binding.signoutFb.setOnClickListener { signOut() }
 
         binding.cancelText.setOnClickListener { finish() }
+        binding.consoleButton.setOnClickListener { ConsoleActivity.start(this) }
         binding.rateus.setOnClickListener {
             val intent = Intent(
                 Intent.ACTION_VIEW,
