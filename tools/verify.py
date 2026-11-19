@@ -483,7 +483,7 @@ if "shimmerViewContainer.visibility = View.GONE" not in _detail_kt:
     )
 
 # 13d. Throttle Sanka TIDAK BOLEH berubah (3 pelanggaran = BAN PERMANEN)
-#      + delay Splash 0 (D2) + versi rilis 2.0.5 / versionCode 10.
+#      + delay Splash 0 (D2) + versi rilis 2.0.8 / versionCode 13.
 _constants = (
     JAVA / "animelovers" / "rebornhd" / "util" / "Constants.kt"
 ).read_text(encoding="utf-8")
@@ -498,10 +498,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*12\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 12 untuk v2.0.7")
-if '"2.0.7"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.7"')
+if not re.search(r"versionCode\s*=\s*13\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 13 untuk v2.0.8")
+if '"2.0.8"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.8"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -751,36 +751,12 @@ if "setReadTimeoutMs(30_000)" not in _video_kt:
         "(sama seperti timeout transport Sanka — v2.0.6 #1b)"
     )
 
-# 16l. TIDAK BOLEH ada flip otomatis Media3 → WebView (v2.0.6 #1b, D4b):
-#      jalur kandidat-berikut WAJIB lewat playNextOrAsk — bila kandidat
-#      berikut adalah embed, tampil dialog tanya dulu; hanya ketukan
-#      eksplisit "Putar lewat website" yang boleh pindah ke website.
-if "playNextOrAsk" not in _video_kt:
-    errors.append(
-        "VideoPlayActivity.kt: playNextOrAsk wajib ada (gerbang "
-        "kandidat-berikut — embed tidak boleh dimainkan langsung, v2.0.6 #1b)"
-    )
-if "showWebViewFallbackDialog" not in _video_kt:
-    errors.append(
-        "VideoPlayActivity.kt: showWebViewFallbackDialog wajib ada "
-        "(tanya pengguna sebelum pindah ke website — v2.0.6 #1b)"
-    )
-if "playCandidate(nextIndex" in _video_kt:
-    errors.append(
-        "VideoPlayActivity.kt: playCandidate(nextIndex...) langsung "
-        "dilarang — jalur tryNextCandidate wajib lewat playNextOrAsk "
-        "(v2.0.6 #1b)"
-    )
-if "webview_fallback_judul" not in defined["string"]:
-    errors.append(
-        "strings.xml: webview_fallback_judul wajib ada (judul dialog "
-        "tanya-fallback-ke-WebView — v2.0.6 #1b)"
-    )
-if "putar_lewat_website" not in defined["string"]:
-    errors.append(
-        "strings.xml: putar_lewat_website wajib ada (tombol eksplisit "
-        "pindah ke website — v2.0.6 #1b)"
-    )
+# 16l. DIHAPUS di v2.0.8 (D-web): tidak ada lagi flip otomatis Media3 →
+#      WebView karena JALUR WebView-nya dihapus total (item 5) — tidak ada
+#      lagi playNextOrAsk / showWebViewFallbackDialog / string dialog.
+#      Diganti §19e (0 identifier WebView pemain) + §19f (ujung gagal
+#      jujur). Blok cek lama dihapus, bukan dikomentari — supaya tidak ada
+#      yang mengira dialog itu masih wajib ada.
 
 # ---------- 17. Gerbang v2.0.7 ----------
 # 17a. Poster v10→v11 (riset Q1): tulis ulang host HANYA di jalur poster —
@@ -1178,8 +1154,8 @@ if _play_match is None or "isMovie" in _play_match.group(0):
     )
 
 # ---------- 18. Gerbang v2.0.7 item 14–16 — fallback lintas-sumber ----------
-# (PRD v2.0.8 §18a–§18i + §18o + §18p; item 1–3 dipindah ke v2.0.7
-# atas keputusan Faygo 05:31 WIB — versi TETAP 12 / "2.0.7".)
+# (PRD v2.0.8 §18a–§18i + §18o + §18p; item 1–3 v2.0.8 masuk versi
+# 13 / "2.0.8" — gerbang §13d + §18o ikut naik.)
 _samehadaku_kt = (
     JAVA / "animelovers" / "rebornhd" / "data" / "repo" / "SamehadakuRepository.kt"
 ).read_text(encoding="utf-8")
@@ -1193,7 +1169,7 @@ for _f in (JAVA).rglob("*.kt"):
 
 # 18a. Rantai fallback ada — ekstraksi ok.ru + adapter Samehadaku +
 #      pemakaian keduanya di rantai kandidat setelah lapis Animekompi,
-#      sebelum dialog.
+#      sebelum gagal jujur.
 if "fun extractOkRuUrls" not in _player_repo_kt:
     errors.append(
         "PlayerRepository.kt: extractOkRuUrls wajib ada "
@@ -1217,12 +1193,12 @@ if "fun fetchSamehadakuCandidates" not in _player_repo_kt:
 if "fetchOkRuCandidates(" not in _video_kt:
     errors.append(
         "VideoPlayActivity.kt: rantai fallback wajib memanggil "
-        "fetchOkRuCandidates sebelum dialog embed (v2.0.7 item 15)"
+        "fetchOkRuCandidates sebelum gagal jujur (v2.0.7 item 15)"
     )
 if "fetchSamehadakuCandidates(" not in _video_kt:
     errors.append(
         "VideoPlayActivity.kt: rantai fallback wajib memanggil "
-        "fetchSamehadakuCandidates sebelum dialog embed (v2.0.7 item 16)"
+        "fetchSamehadakuCandidates sebelum gagal jujur (v2.0.7 item 16)"
     )
 
 # 18b. API Donghua TIDAK dipanggil — 0 kemunculan `anime/donghua/` di kode
@@ -1235,7 +1211,7 @@ if "anime/donghua/" in _all_kt:
 
 # 18c. Pencocokan episode antar sumber memakai (judul ternormalisasi +
 #      season + nomor episode); tidak ada pencocokan slug mentah;
-#      bila ragu → dialog (jalur "jangan tebak" ada).
+#      bila ragu → gagal jujur (jalur "jangan tebak" ada).
 for _fn in ("fun normalizeSeriesTitle", "fun seasonNumberFromTitle",
             "fun episodeNumberFromSearchItem", "fun matchEpisode"):
     if _fn not in _samehadaku_kt:
@@ -1316,10 +1292,11 @@ if "hasLayer1 || hasLayer2" not in _player_repo_kt:
         "PlayerRepository.kt: resolve wajib malas — Samehadaku hanya "
         "di-fetch bila lapis 1–2 kosong (v2.0.7 item 17)"
     )
-if "tryLazyLayer(nextIndex)" not in _video_kt:
+if "tryLazyLayer()" not in _video_kt:
     errors.append(
         "VideoPlayActivity.kt: lapis malas wajib dicoba lewat "
-        "tryLazyLayer hanya sebelum jatuh ke embed (v2.0.7 item 17)"
+        "tryLazyLayer hanya bila daftar kandidat habis (v2.0.7 item 17; "
+        "v2.0.8: tanpa argumen nextIndex — tidak ada lagi embed)"
     )
 
 # 18h. D-player — isMovie 0 kemunculan di PlayerRepository / adapter baru /
@@ -1335,14 +1312,9 @@ if "isMovie" in _samehadaku_kt:
         "tidak boleh membedakan jenis anime (D-player)"
     )
 
-# 18i. Dialog "Putar lewat website?" tetap jalan terakhir; tidak ada pesan
+# 18i. TIDAK ADA dialog fallback; tidak ada pesan
 #      "Video tidak tersedia" sebagai fallback (grep string itu = 0 di
-#      kode + res/).
-if "showWebViewFallbackDialog" not in _video_kt:
-    errors.append(
-        "VideoPlayActivity.kt: dialog fallback WebView wajib ada "
-        "(jalan terakhir — v2.0.7 item 17)"
-    )
+#      kode + res/). Ujung rantai = gagal jujur (lihat §19f).
 if "Video tidak tersedia" in _all_kt:
     errors.append(
         'Kode: string "Video tidak tersedia" dilarang — ditolak Faygo '
@@ -1358,7 +1330,8 @@ if "Video tidak tersedia" in _res_text:
     )
 
 # 18o. Batasan keras TIDAK BOLEH berubah (re-assert §13d/§16f/§17k) +
-#      versi TETAP 12 / "2.0.7" (item 14–16 masuk v2.0.7, BUKAN 2.0.8).
+#      versi 13 / "2.0.8" (v2.0.8; cek "versionCode 13 dilarang" dari
+#      v2.0.7 DIHAPUS — 13 kini versi yang benar).
 if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
     errors.append(
         "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
@@ -1374,32 +1347,46 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*12\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*13\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib TETAP 12 — item 14–16 "
-        "masuk v2.0.7, bukan 2.0.8"
+        "app/build.gradle.kts: versionCode wajib 13 untuk v2.0.8"
     )
-if '"2.0.7"' not in _app_gradle:
+if '"2.0.8"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib TETAP "2.0.7"'
-    )
-if re.search(r"versionCode\s*=\s*13\b", _app_gradle):
-    errors.append(
-        "app/build.gradle.kts: versionCode 13 dilarang di v2.0.7 — "
-        "itu versi v2.0.8"
+        'app/build.gradle.kts: versionName wajib "2.0.8"'
     )
 
-# 18p. Komentar diagnosis #8 menyebut 451 di-retry 8× (~20 dtk/kandidat)
-#      — kata "tanpa retry" untuk 451 tidak ada lagi (koreksi O-1 Cari Bug).
-if "DI-retry 8" not in _video_kt:
+# 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
+#      override (TIME_UNSET); error transient (IO/5xx/408/429) tetap
+#      DI-retry 8×. Klaim lama "451 DI-retry 8×" menjadi SALAH — larang
+#      frasa lama SECARA PRESISI (literal "451 DI-retry 8") supaya
+#      frasa benar ("tetap DI-retry 8×" untuk transient) tidak ikut
+#      terlarang.
+if "getRetryDelayMsFor" not in _video_kt:
     errors.append(
-        "VideoPlayActivity.kt: komentar diagnosis wajib menyebut HTTP 451 "
-        "DI-retry 8× (koreksi O-1 — v2.0.7 item 17)"
+        "VideoPlayActivity.kt: override getRetryDelayMsFor wajib ada "
+        "(fail-fast 451/404/410 — v2.0.8 item 3)"
+    )
+if "C.TIME_UNSET" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: fail-fast wajib mengembalikan C.TIME_UNSET "
+        "(tanpa retry — v2.0.8 item 3)"
+    )
+if "HttpFailFast.isPermanent" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: override wajib memakai HttpFailFast "
+        "(keputusan murni — v2.0.8 item 3)"
+    )
+if "451 DI-retry 8" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: klaim lama \"451 DI-retry 8\" dilarang — "
+        "451 fail-fast di v2.0.8 (yang tetap DI-retry 8× hanya error "
+        "transient: IO/5xx/408/429)"
     )
 if "gagal cepat tanpa retry" in _video_kt:
     errors.append(
-        "VideoPlayActivity.kt: frasa \"gagal cepat tanpa retry\" untuk 451 "
-        "dilarang — 451 DI-retry 8× (koreksi O-1)"
+        "VideoPlayActivity.kt: frasa \"gagal cepat tanpa retry\" dilarang "
+        "— pakai istilah \"fail-fast\" (v2.0.8 item 3)"
     )
 
 # 18q. SATU nama top-level = SATU definisi (H-1/C-1 — build gabungan
@@ -1441,6 +1428,192 @@ for (_pkg, _name), _locs in sorted(_declared.items()):
             f"{len(_locs)}× ({'; '.join(_locs)}) — satu nama, satu "
             f"definisi (H-1/C-1 v2.0.7)"
         )
+
+# ---------- 19. Gerbang v2.0.8 ----------
+# 19a. Watchdog ambang pertumbuhan (item 1 — KONSERVATIF): ambang cek /
+#      tanpa-tumbuh / maks TETAP 10/30/120 dtk; tambah ambang minimal
+#      500 ms/cek; keputusan murni di StallTracker; baseline DIMAJUKAN
+#      di setiap cek (bukan hanya saat lolos).
+if not re.search(r"STALL_CHECK_INTERVAL_MS\s*=\s*10_000L", _video_kt):
+    errors.append(
+        "VideoPlayActivity.kt: STALL_CHECK_INTERVAL_MS wajib tetap "
+        "10_000L (v2.0.8 item 1 — ambang 10/30/120 dtk tidak diubah)"
+    )
+if not re.search(r"STALL_NO_GROWTH_MS\s*=\s*30_000L", _video_kt):
+    errors.append(
+        "VideoPlayActivity.kt: STALL_NO_GROWTH_MS wajib tetap 30_000L "
+        "(v2.0.8 item 1)"
+    )
+if not re.search(r"STALL_MAX_MS\s*=\s*120_000L", _video_kt):
+    errors.append(
+        "VideoPlayActivity.kt: STALL_MAX_MS wajib tetap 120_000L "
+        "(v2.0.8 item 1)"
+    )
+if not re.search(r"STALL_MIN_GROWTH_MS\s*=\s*500L", _video_kt):
+    errors.append(
+        "VideoPlayActivity.kt: STALL_MIN_GROWTH_MS wajib 500L "
+        "(ambang pertumbuhan minimal — v2.0.8 item 1)"
+    )
+if "StallTracker.isGrowth" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: startStallWatch wajib memakai "
+        "StallTracker.isGrowth (keputusan murni — v2.0.8 item 1)"
+    )
+if "lastBufferedMs = buffered" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: baseline lastBufferedMs WAJIB dimajukan "
+        "di SETIAP cek — varian baseline-saat-lolos gagal diam-diam "
+        "untuk Ep 1180 (v2.0.8 item 1)"
+    )
+if "fun isGrowth" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: StallTracker.isGrowth wajib ada "
+        "(fungsi murni untuk harness — v2.0.8 item 1)"
+    )
+
+# 19b. UA + Referer playback (item 2): UA browser di factory + izinkan
+#      redirect lintas-protokol; Referer per-kind via headersFor (ok.ru
+#      → https://ok.ru/, sisanya tanpa Referer); timeout 15/30 + retry 8
+#      TETAP (gerbang §16j/§16k).
+if "setUserAgent(PlayerRepository.OKRU_USER_AGENT)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: setupPlayer wajib setUserAgent "
+        "(OKRU_USER_AGENT — v2.0.8 item 2)"
+    )
+if "setAllowCrossProtocolRedirects(true)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: setupPlayer wajib "
+        "setAllowCrossProtocolRedirects(true) (v2.0.8 item 2)"
+    )
+if "setDefaultRequestProperties" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: startMedia3 wajib memasang Referer "
+        "per-kind via setDefaultRequestProperties (v2.0.8 item 2)"
+    )
+if "fun headersFor" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: headersFor(kind) wajib ada (Referer "
+        "per-kind — v2.0.8 item 2)"
+    )
+if '"https://ok.ru/"' not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: headersFor wajib memberi Referer "
+        "https://ok.ru/ untuk kind ok.ru (v2.0.8 item 2)"
+    )
+
+# 19c. Fail-fast 4xx + pengecualian 408/429 (item 3): keputusan murni di
+#      HttpFailFast; 408/429 TIDAK fail-fast (tetap di-retry 8×);
+#      MIN_DIRECT_LOAD_RETRIES tetap 8.
+if "fun isPermanent" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: HttpFailFast.isPermanent wajib ada "
+        "(keputusan murni — v2.0.8 item 3)"
+    )
+if "code != 408 && code != 429" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: 408/429 WAJIB dikecualikan dari fail-fast "
+        "(transient, tetap di-retry 8× — v2.0.8 item 3)"
+    )
+if not re.search(
+    r"MIN_DIRECT_LOAD_RETRIES\s*=\s*8\b", _video_kt
+):
+    errors.append(
+        "VideoPlayActivity.kt: MIN_DIRECT_LOAD_RETRIES wajib tetap 8 "
+        "(v2.0.8 item 3 — fail-fast bukan pengurangan retry)"
+    )
+
+# 19d. Header Blogger (item 4): fetchBloggerUrls memakai
+#      buildBloggerRequest (UA + Referer Sanka, sama seperti ok.ru).
+if "fun buildBloggerRequest" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: buildBloggerRequest wajib ada "
+        "(request Blogger murni — v2.0.8 item 4)"
+    )
+if "buildBloggerRequest(iframeUrl)" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: fetchBloggerUrls wajib memakai "
+        "buildBloggerRequest (v2.0.8 item 4)"
+    )
+if _player_repo_kt.count('header("User-Agent", OKRU_USER_AGENT)') < 2:
+    errors.append(
+        "PlayerRepository.kt: UA browser wajib di request Blogger DAN "
+        "ok.ru (v2.0.8 item 4)"
+    )
+if _player_repo_kt.count('header("Referer", Constants.SANKA_BASE_URL)') < 2:
+    errors.append(
+        "PlayerRepository.kt: Referer Sanka wajib di request Blogger DAN "
+        "ok.ru (v2.0.8 item 4)"
+    )
+
+# 19e. 0 identifier WebView pemain — SCOPED (bukan grep global
+#      "WebView"): rantai pemain (VideoPlayActivity, SankaSource,
+#      PlayerRepository) + layout player + strings TIDAK BOLEH memuat
+#      WebView/webView/isWebView/EMBED. Transport Sanka (SankaWebTransport
+#      + MainActivity + SankaRepository) SENGAJA tidak dicakup — tanpa itu
+#      aplikasi tidak bisa bicara ke Sanka (Cloudflare memblokir OkHttp).
+for _name, _text in (
+    ("VideoPlayActivity.kt", _video_kt),
+    ("SankaSource.kt", _source_kt),
+    ("PlayerRepository.kt", _player_repo_kt),
+):
+    for _bad in ("WebView", "webView", "isWebView", "EMBED"):
+        if _bad in _text:
+            errors.append(
+                f"{_name}: identifier {_bad} dilarang di rantai pemain "
+                f"(v2.0.8 item 5 — WebView pemain dihapus total)"
+            )
+if "android.webkit" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: import android.webkit dilarang "
+        "(v2.0.8 item 5)"
+    )
+if "<WebView" in _res_text or "webView" in _res_text:
+    errors.append(
+        "res/: elemen/ID WebView dilarang di layout player "
+        "(v2.0.8 item 5)"
+    )
+if "putar_lewat_website" in defined["string"]:
+    errors.append(
+        "strings.xml: putar_lewat_website wajib DIHAPUS (v2.0.8 item 5)"
+    )
+if "webview_fallback_judul" in defined["string"]:
+    errors.append(
+        "strings.xml: webview_fallback_judul wajib DIHAPUS (v2.0.8 item 5)"
+    )
+if "webview_fallback_isi" in defined["string"]:
+    errors.append(
+        "strings.xml: webview_fallback_isi wajib DIHAPUS (v2.0.8 item 5)"
+    )
+
+# 19f. Ujung gagal jujur (item 5): tidak ada lagi playNextOrAsk /
+#      dialog fallback; tryNextCandidate habis → lapis malas → toast
+#      gagal_memutar + keluar; lapis malas menambah kandidat di AKHIR
+#      daftar (addAll, tanpa embed yang didahului).
+if "playNextOrAsk" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: playNextOrAsk wajib DIHAPUS "
+        "(v2.0.8 item 5 — tidak ada lagi dialog tanya-fallback)"
+    )
+if "showWebViewFallbackDialog" in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: showWebViewFallbackDialog wajib DIHAPUS "
+        "(v2.0.8 item 5)"
+    )
+if "tryNextCandidate()" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: tryNextCandidate wajib ada (ujung rantai "
+        "— v2.0.8 item 5)"
+    )
+if "updated.addAll(fresh)" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: launchLazyLayer wajib menambah kandidat "
+        "baru di AKHIR daftar (addAll — v2.0.8 item 5)"
+    )
+if "toast(getString(R.string.gagal_memutar, episode))" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: ujung gagal wajib toast gagal_memutar "
+        "(v2.0.8 item 5)"
+    )
 
 # ---------- Laporan ----------
 

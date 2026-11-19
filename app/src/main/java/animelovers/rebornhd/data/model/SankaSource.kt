@@ -9,7 +9,9 @@ package animelovers.rebornhd.data.model
  *  (3) Blogger hasil ekstrak itag 22 (720p) → 18 (360p)
  *  (4) ok.ru hasil ekstrak tier hd (720p) → sd (480p) — lapis 2
  *  (5) Samehadaku Blogger hasil ekstrak itag 22 (720p) → 18 (360p) — lapis 3
- *  (6) WebView embed (default_iframe / sumber embed) — fallback terakhir
+ *  Bila semua lapis gagal → gagal jujur (toast + keluar, seperti asli).
+ *  v2.0.8 item 5 (D-web): kandidat embed DIHAPUS — tidak ada
+ *  lagi jalur "Putar lewat website".
  *
  * URL hasil ekstrak/token diambil SEGAR tiap putar — tidak pernah disimpan
  * di DB/riwayat (kedaluwarsa: expire + sig + terikat IP).
@@ -22,8 +24,7 @@ enum class PlayableKind {
     OKRU_720,
     OKRU_360,
     SAMEHADAKU_720,
-    SAMEHADAKU_360,
-    EMBED
+    SAMEHADAKU_360
 }
 
 data class PlayableSource(
@@ -41,12 +42,10 @@ data class PlayableSource(
      * "480p" = ok.ru tier sd (tangga kualitas ok.ru: mobile/lowest/low/
      *   sd/hd/full = 144/240/360/480/720/1080p; label dikoreksi ke tinggi
      *   AKTUAL saat frame pertama lewat onVideoSizeChanged).
-     * "480p" = embed WebView (embed jalan di kualitas bawaannya ~480p).
      * "1080p" DILARANG di mana pun — tidak ada sumber 1080p yang bisa
      *   di-streaming (hanya label di shortlink unduhan).
      */
-    val qualityLabel: String,
-    val isWebView: Boolean = false
+    val qualityLabel: String
 ) {
     /** Tier HD (720p) — target tombol `resolution` saat ini di SD. */
     val isHd: Boolean get() = qualityLabel == "720p"

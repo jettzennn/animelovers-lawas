@@ -61,12 +61,9 @@
     <string name="volume">Volume</string>
     <string name="film">Film</string>
     <string name="gagal_memutar">Gagal memutar Episode %1$d</string>
-    <!-- v2.0.6 #1b: dialog tanya-fallback-ke-WebView — muncul HANYA bila
-         semua kandidat direct benar-benar habis; pindah ke website hanya
-         lewat ketukan eksplisit pengguna (anti-flip). -->
-    <string name="webview_fallback_judul">Video langsung gagal dimuat</string>
-    <string name="webview_fallback_isi">Video langsung tidak bisa diputar di koneksi ini. Putar lewat website?</string>
-    <string name="putar_lewat_website">Putar lewat website</string>
+    <!-- v2.0.8 item 5 (D-web): dialog "Putar lewat website?" + string
+         dialognya DIHAPUS — bila semua kandidat direct habis, player
+         gagal jujur (toast + keluar). -->
     <string name="memuat_video">Memuat video…</string>
     <string name="terlalu_banyak_permintaan">Terlalu banyak permintaan, coba lagi sebentar lagi</string>
 

@@ -16,13 +16,6 @@ import android.os.SystemClock
 import android.os.Environment
 import android.util.Log
 import android.view.View
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -30,16 +23,19 @@ import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import animelovers.rebornhd.R
@@ -48,6 +44,9 @@ import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.PlayableSource
 import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.data.repo.EpisodeSources
+import animelovers.rebornhd.data.repo.HttpFailFast
+import animelovers.rebornhd.data.repo.PlayerRepository
+import animelovers.rebornhd.data.repo.StallTracker
 import animelovers.rebornhd.databinding.ActivityVideoBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.util.Constants
@@ -75,31 +74,28 @@ import kotlin.coroutines.cancellation.CancellationException
  * - v2.0.5: dialog mode "Unduh"/"Streaming" DIHAPUS (penyimpangan disengaja
  *   dari REA §4.1 atas permintaan Faygo) — masuk player langsung memutar
  *   kandidat awal; tombol Unduh kini DI KONTROL PLAYER (menu kanan, ikon
- *   download_new) + bilah atas mode WebView; unduh TIDAK lagi menutup
- *   player (tonton lanjut sambil mengunduh).
+ *   download_new); unduh TIDAK lagi menutup player (tonton lanjut sambil
+ *   mengunduh).
  *
  * v2 (desain.md §14):
  * - TIDAK ADA subtitle track (hardsub menempel di video) — tombol Subtitle
  *   dihapus; TIDAK ADA polling subtitle / backend.
  * - Sumber = file MP4 langsung (bukan HLS): Pixeldrain 720p → stream token
- *   Animekompi 720p → Blogger ekstrak itag 22 (720p) → 18 (360p) → WebView
- *   embed (fallback terakhir). Fallback OTOMATIS antar kandidat DIRECT
- *   bila yang sedang diputar error; ke WebView (embed) TIDAK otomatis —
- *   ditanya dulu lewat dialog (v2.0.6 #1b): pindah ke website hanya lewat
- *   ketukan eksplisit pengguna, tidak pernah karena buffering lambat.
+ *   Animekompi 720p → Blogger ekstrak itag 22 (720p) → 18 (360p) → gagal
+ *   jujur (toast + keluar, seperti asli). Fallback OTOMATIS antar kandidat
+ *   DIRECT bila yang sedang diputar error.
  * - v2.0.7 item 14–16 (fallback lintas-sumber): rantai diperpanjang —
  *   setelah Blogger Animekompi, coba ok.ru (ekstrak tier hd → sd dari
  *   URL embed Animekompi), lalu Samehadaku (cari episode yang sama →
- *   Blogger ekstrak itag 22 → 18), baru dialog WebView. Lapis 2–3 MALAS
- *   (tidak di-fetch bila lapis 1 sukses; diambil saat resolve hanya bila
- *   lapis 1 kosong, atau belakangan oleh tryLazyLayer bila semua
- *   kandidat sebelumnya gagal). Pengawas macet-buffering (#8) berlaku
- *   per kandidat di semua lapis, ambang tidak diubah.
+ *   Blogger ekstrak itag 22 → 18), baru gagal jujur (toast + keluar).
+ *   Lapis 2–3 MALAS (tidak di-fetch bila lapis 1 sukses; diambil saat
+ *   resolve hanya bila lapis 1 kosong, atau belakangan oleh tryLazyLayer
+ *   bila semua kandidat sebelumnya gagal). Pengawas macet-buffering (#8)
+ *   berlaku per kandidat di semua lapis, ambang tidak diubah.
  * - v2.0.6 (D4): player WAJIB mulai dari video LANGSUNG di kontrol
- *   aplikasi sendiri — default pref `hdOnly` kini "1" (720p direct dulu);
- *   embed WebView HANYA bila tidak ada kandidat direct sama sekali.
+ *   aplikasi sendiri — default pref `hdOnly` kini "1" (720p direct dulu).
  *   `resolution` mengalihkan KUALITAS di player yang sama (direct 720p ↔
- *   direct 360p), BUKAN mengganti mesin (Media3 ↔ WebView) — seperti
+ *   direct 360p), BUKAN mengganti mesin pemutar — seperti
  *   aslinya yang mengganti SD↔HD di ExoPlayer yang sama. Satu tier saja →
  *   ikon `_off`, tidak bisa diketuk. Bila tier 360p belum ada di daftar
  *   (ekstrak Blogger lazy), ketuk `resolution` memicu fetch Blogger
@@ -111,29 +107,27 @@ import kotlin.coroutines.cancellation.CancellationException
  * - v2.0.6 #1b (anti-flip): jaringan lambat BUKAN kegagalan. Timeout HTTP
  *   default Media3 (8 dtk connect/read) terlalu pendek untuk koneksi
  *   lambat — sekali read macet 8 dtk, error naik ke onPlayerError lalu
- *   tryNextCandidate jatuh ke embed (inilah flip yang dilaporkan Faygo:
- *   kontrol aplikasi dulu, lalu pindah ke player website). Timeout
- *   dinaikkan ke 15 dtk (connect) / 30 dtk (read, sama seperti timeout
- *   transport Sanka) + retry load internal 8× (default 3×) supaya
- *   kandidat direct yang sama dicoba ulang dulu sebelum dianggap gagal.
- *   Bila semua direct benar-benar habis, fallback ke WebView DITANYAKAN
- *   lewat dialog — tidak pernah otomatis.
+ *   tryNextCandidate maju ke kandidat berikut (dulu jatuh ke embed —
+ *   inilah flip yang dilaporkan Faygo: kontrol aplikasi dulu, lalu
+ *   pindah ke player website). Timeout dinaikkan ke 15 dtk (connect) /
+ *   30 dtk (read, sama seperti timeout transport Sanka) + retry load
+ *   internal 8× (default 3×) supaya kandidat direct yang sama dicoba
+ *   ulang dulu sebelum dianggap gagal. Bila semua direct benar-benar
+ *   habis, v2.0.8 gagal jujur — toast + keluar seperti asli; dialog
+ *   "Putar lewat website?" DIHAPUS (D-web, keputusan Faygo).
  * - Loading awal = ProgressBar + teks "Memuat video…" dan kontrol TIDAK
  *   auto-hide sampai frame pertama tampil.
- * - Mode WebView: bilah atas minimal (FAB kembali + judul + label kualitas
- *   sumber embed + tombol "720p" bila ada kandidat 720p — jalan pindah ke
- *   direct). Next/Prev + auto-play TIDAK berlaku di WebView (aplikasi tidak
- *   bisa mendeteksi akhir video — auto-next DINONAKTIFKAN di embed, jujur:
- *   tidak ada event ENDED dari halaman embed; polling durasi per-embed
- *   rapuh dan tidak dipakai). Posisi resume saat pindah Media3↔WebView =
- *   best-effort (posisi saat masuk WebView — posisi di dalam WebView tidak
- *   bisa dibaca).
  * - Resume disimpan −30 detik saat seek / ganti kualitas / keluar (aturan
  *   asli — dulu hanya saat keluar).
  * - "Unduh" = file .mp4 langsung dari Pixeldrain (BUKAN .m3u8 seperti v1).
  *   Bila episode tanpa Pixeldrain, tombol Unduh tidak ditampilkan.
  *   v2.0.5: unduh dari tombol di kontrol player — player TIDAK ditutup.
  * - 429 di dalam player = toast rate limit + keluar (tanpa retry).
+ * - v2.0.8: pengawas macet pakai ambang pertumbuhan minimal 500 ms/cek
+ *   (item 1 — buffer yang hanya merambat dihitung macet); playback
+ *   DataSource memakai UA browser + Referer per-kind (item 2); HTTP
+ *   451/404/410 fail-fast tanpa retry (item 3); opsi "Putar lewat
+ *   website" + jalur pemutar website DIHAPUS TOTAL (item 5, D-web).
  */
 @OptIn(UnstableApi::class)
 class VideoPlayActivity : BaseActivity() {
@@ -142,6 +136,14 @@ class VideoPlayActivity : BaseActivity() {
 
     private lateinit var binding: ActivityVideoBinding
     private var player: ExoPlayer? = null
+
+    /**
+     * Factory sumber data HTTP playback (v2.0.8 item 2) — dibuat di
+     * setupPlayer(), dipakai ulang di startMedia3() untuk memasang
+     * Referer per-kind (headersFor) sebelum media item dipasang.
+     * Aman karena playback strictly sequential (satu kandidat aktif).
+     */
+    private lateinit var httpDataSourceFactory: DefaultHttpDataSource.Factory
 
     private var animeSlug: String = ""
     private var animeTitle: String = ""
@@ -216,33 +218,14 @@ class VideoPlayActivity : BaseActivity() {
     /** Waktu mulai kandidat berjalan (elapsedRealtime) — untuk log. */
     private var candidateStartedAtMs: Long = 0L
 
-    /** Error WebView sudah ditangani untuk load embed ini (sekali saja). */
-    private var webViewErrorShown: Boolean = false
-
-    /** Dialog tanya-fallback-ke-WebView sudah tampil untuk episode ini (sekali saja). */
-    private var webViewFallbackDialogShown: Boolean = false
-
-    /** Host embed yang sedang dimuat di WebView (M1) — satu-satunya host yang boleh dinavigasi. */
-    private var webViewAllowedHost: String? = null
-
     private var isHd: Boolean = false
     private var isFill: Boolean = false
     private var wasPlaying: Boolean = false
     private var resumeSaved: Boolean = false
     private var wifiDialogShown: Boolean = false
 
-    /** Mode WebView (embed) sedang tampil — player Media3 dijeda. */
-    private var isWebViewMode: Boolean = false
-
-    /** Posisi Media3 saat masuk mode WebView (best-effort untuk resume). */
-    private var webViewEntryPositionMs: Long = 0L
-
     /** Frame pertama sudah tampil (loading awal selesai). */
     private var hasFirstFrame: Boolean = false
-
-    /** Fullscreen di dalam WebView (video embed minta fullscreen). */
-    private var fullscreenView: View? = null
-    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -255,6 +238,16 @@ class VideoPlayActivity : BaseActivity() {
 
         /** Buffer tidak bertambah selama ini → kandidat dianggap macet. */
         private const val STALL_NO_GROWTH_MS = 30_000L
+
+        /**
+         * Ambang pertumbuhan minimal (v2.0.8 item 1): tumbuh < ini per
+         * cek 10 dtk = MACET (bukan tumbuh). 500 ms/10 dtk = 50 ms/dtk →
+         * menuntut ≥ 3,35 KB/dtk (360p) / ≥ 9 KB/dtk (720p). Baseline
+         * DIMAJUKAN di setiap cek (lihat startStallWatch) — jangan ubah
+         * aturan itu: varian baseline-saat-lolos gagal diam-diam untuk
+         * Ep 1180 (buffer merambat 450 ms/cek).
+         */
+        private const val STALL_MIN_GROWTH_MS = 500L
 
         /** Buffering satu kandidat paling lama ini → lanjut kandidat berikut. */
         private const val STALL_MAX_MS = 120_000L
@@ -311,7 +304,6 @@ class VideoPlayActivity : BaseActivity() {
         })
 
         setupPlayer()
-        setupWebView()
         wireControls()
         registerWifiCallback()
 
@@ -332,15 +324,23 @@ class VideoPlayActivity : BaseActivity() {
         // v2.0.6 #1b — jaringan lambat BUKAN kegagalan: timeout HTTP
         // default Media3 (8 dtk connect/read) terlalu pendek untuk koneksi
         // lambat — sekali read macet 8 dtk, error naik ke onPlayerError
-        // lalu tryNextCandidate jatuh ke embed (flip yang dilaporkan
-        // Faygo). Naikkan ke 15 dtk (connect) / 30 dtk (read, sama seperti
-        // timeout transport Sanka) + retry load internal 8× (default 3×)
-        // supaya kandidat direct yang sama dicoba ulang dulu sebelum
-        // dianggap gagal.
-        val dataSourceFactory = DefaultHttpDataSource.Factory()
+        // lalu tryNextCandidate maju ke kandidat berikut (dulu jatuh ke
+        // embed — flip yang dilaporkan Faygo). Naikkan ke 15 dtk
+        // (connect) / 30 dtk (read, sama seperti timeout transport
+        // Sanka) + retry load internal 8× (default 3×) supaya kandidat
+        // direct yang sama dicoba ulang dulu sebelum dianggap gagal.
+        // v2.0.8 item 2: UA browser + cross-protocol redirect — Media3
+        // mengirim UA bawaan ExoPlayerLib tanpa Referer; token/ok.ru
+        // dilayani lebih andal sebagai browser (hardening, BUKAN
+        // penyebab Ep 1180 — file itag 18 terbukti bisa dijangkau
+        // request polos). Referer per-kind dipasang startMedia3()
+        // (headersFor) sebelum media item dipasang.
+        httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(PlayerRepository.OKRU_USER_AGENT)
+            .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpDataSourceFactory)
             .setLoadErrorHandlingPolicy(DirectLoadErrorHandlingPolicy())
         val exoPlayer = ExoPlayer.Builder(this)
             .setLoadControl(loadControl)
@@ -381,7 +381,7 @@ class VideoPlayActivity : BaseActivity() {
                         // tidak pernah cukup buffer TIDAK menghasilkan error,
                         // jadi rantai kandidat tidak maju sendiri (lihat
                         // startStallWatch).
-                        if (exoPlayer.playWhenReady && !isWebViewMode) {
+                        if (exoPlayer.playWhenReady) {
                             startStallWatch()
                         }
                     }
@@ -403,7 +403,7 @@ class VideoPlayActivity : BaseActivity() {
                 updatePlayPauseButton()
                 if (playWhenReady) {
                     val p = exoPlayer
-                    if (p.playbackState == Player.STATE_BUFFERING && !isWebViewMode) {
+                    if (p.playbackState == Player.STATE_BUFFERING) {
                         startStallWatch()
                     }
                 } else {
@@ -436,7 +436,6 @@ class VideoPlayActivity : BaseActivity() {
                 reason: Int
             ) {
                 if (reason != Player.DISCONTINUITY_REASON_SEEK) return
-                if (isWebViewMode) return
                 if (newPosition.positionMs == lastProgrammaticSeekTargetMs) {
                     lastProgrammaticSeekTargetMs = -1L
                     return
@@ -450,14 +449,16 @@ class VideoPlayActivity : BaseActivity() {
                 val currentUri = exoPlayer.currentMediaItem
                     ?.localConfiguration?.uri?.toString()
                 val source = currentSource
-                if (source == null || source.isWebView || currentUri != source.url) return
+                if (source == null || currentUri != source.url) return
                 // Log TANPA URL (token stream sensitif) — hanya jenis error
                 // + penyebabnya (mis. InvalidResponseCodeException = HTTP
-                // 451/404: file di-takedown. KOREKSI v2.0.7 (O-1 Cari Bug):
-                // HTTP 451 DI-retry 8× oleh DefaultLoadErrorHandlingPolicy
-                // Media3 (jeda 0,1,2,3,4,5,5 dtk, maks ~20 dtk/kandidat) —
-                // "gagal cepat / tanpa retry" untuk 451 adalah SALAH.
-                // onPlayerError ini baru tiba SETELAH retry itu habis.
+                // 451/404: file di-takedown. v2.0.8 item 3: HTTP 451/404/410
+                // fail-fast via override getRetryDelayMsFor (TIME_UNSET) —
+                // tanpa retry; error transient (IO/5xx/408/429) tetap
+                // DI-retry 8× oleh DefaultLoadErrorHandlingPolicy Media3
+                // (jeda 0,1,2,3,4,5,5 dtk, maks ~20 dtk/kandidat).
+                // onPlayerError ini baru tiba SETELAH retry itu habis
+                // (untuk transient) atau langsung (untuk 451/404/410).
                 Log.w(
                     TAG_PLAYER,
                     "Ep $episode: error kandidat ${source.kind} setelah " +
@@ -471,129 +472,6 @@ class VideoPlayActivity : BaseActivity() {
         // Keadaan awal tombol play/pause (v2.0.7 #6): sebelum play(),
         // playWhenReady=false → hanya ▶ yang tampil.
         updatePlayPauseButton()
-    }
-
-    // ---- Setup WebView (mode embed) ----
-
-    private fun setupWebView() {
-        val webView = binding.webView
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        // Embed butuh autoplay tanpa gestur (video dimulai oleh pengguna
-        // lewat tombol play di halaman embed itu sendiri).
-        webView.settings.mediaPlaybackRequiresUserGesture = false
-        // L3 — embed remote tidak butuh akses file: matikan file:// +
-        // content:// (default keduanya true).
-        webView.settings.allowFileAccess = false
-        webView.settings.allowContentAccess = false
-        webView.webViewClient = object : WebViewClient() {
-            // EMBED selalu kandidat terakhir (#3): bila halaman embed gagal
-            // dimuat, tidak ada kandidat berikut untuk dicoba — toast jujur
-            // + keluar (jangan diam dengan layar WebView kosong).
-            // Hanya frame utama yang dihitung — error sub-resource (gambar,
-            // iklan di halaman embed) bukan kegagalan putar.
-            override fun onReceivedError(
-                view: WebView,
-                request: WebResourceRequest,
-                error: WebResourceError
-            ) {
-                if (request.isForMainFrame) onWebViewError()
-            }
-
-            @Suppress("DEPRECATION")
-            override fun onReceivedError(
-                view: WebView,
-                errorCode: Int,
-                description: String?,
-                failingUrl: String?
-            ) {
-                // API < 23: callback ini hanya dipanggil untuk frame utama.
-                onWebViewError()
-            }
-
-            override fun onReceivedHttpError(
-                view: WebView,
-                request: WebResourceRequest,
-                errorResponse: WebResourceResponse
-            ) {
-                if (request.isForMainFrame) onWebViewError()
-            }
-
-            // M1 — navigasi WebView dikunci ke host embed asal: halaman
-            // embed (atau iklan/redirect di dalamnya) TIDAK BOLEH membawa
-            // pengguna ke situs lain tanpa bilah URL (phishing). Hanya
-            // navigasi frame utama yang dicek — sub-resource (gambar/iklan)
-            // bukan navigasi. Yang diizinkan = host URL embed yang dimuat
-            // (+ subdomainnya); sisanya diblokir (return true, tanpa memuat,
-            // tanpa toast — redirect iklan bisa berulang).
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                if (!request.isForMainFrame) return false
-                return !isAllowedEmbedHost(request.url.host)
-            }
-
-            @Suppress("DEPRECATION")
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                // API < 24: callback ini hanya dipanggil untuk frame utama.
-                return !isAllowedEmbedHost(Uri.parse(url).host)
-            }
-
-            private fun isAllowedEmbedHost(host: String?): Boolean {
-                val allowed = webViewAllowedHost ?: return false
-                val h = host?.lowercase() ?: return false
-                return h == allowed || h.endsWith(".$allowed")
-            }
-
-            private fun onWebViewError() {
-                if (!isWebViewMode || webViewErrorShown) return
-                webViewErrorShown = true
-                toast(getString(R.string.gagal_memutar, episode))
-                saveAndFinish()
-            }
-        }
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-                // Video di dalam embed minta fullscreen.
-                if (fullscreenView != null) {
-                    callback.onCustomViewHidden()
-                    return
-                }
-                fullscreenView = view
-                fullscreenCallback = callback
-                binding.videoLayout.addView(
-                    view,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                )
-                binding.webViewContainer.visibility = View.GONE
-            }
-
-            override fun onHideCustomView() {
-                fullscreenView?.let { binding.videoLayout.removeView(it) }
-                fullscreenView = null
-                fullscreenCallback?.onCustomViewHidden()
-                fullscreenCallback = null
-                if (isWebViewMode) binding.webViewContainer.visibility = View.VISIBLE
-            }
-        }
-
-        binding.webViewBack.setOnClickListener { saveAndFinish() }
-        // Unduh di bilah atas mode WebView (v2.0.5, D1) — tombol yang sama
-        // seperti di kontrol Media3; visibilitas diatur updateDownloadUi().
-        binding.webViewDownload.setOnClickListener { onDownloadClicked() }
-        binding.webViewQuality720.setOnClickListener {
-            val all = sources ?: return@setOnClickListener
-            val hdIndex = all.candidates.indexOfFirst { it.isHd && !it.isWebView }
-            if (hdIndex >= 0) {
-                isHd = true
-                prefs.hdOnly = "1"
-                playCandidate(hdIndex, webViewEntryPositionMs)
-            }
-        }
     }
 
     // ---- Kontrol kustom di exo_playback_control_view.xml ----
@@ -662,8 +540,7 @@ class VideoPlayActivity : BaseActivity() {
             )
         }
 
-        // Next / prev (tidak berlaku di mode WebView — tombolnya ada di
-        // kontrol Media3 saja; di WebView pengguna keluar lewat FAB).
+        // Next / prev (tombolnya ada di kontrol Media3).
         playerView.findViewById<View>(R.id.next_play_png)?.setOnClickListener {
             val next = nextEpisode() ?: return@setOnClickListener
             val slug = nextEpisodeSlug() ?: return@setOnClickListener
@@ -730,9 +607,7 @@ class VideoPlayActivity : BaseActivity() {
     /**
      * Tombol `resolution` (v2.0.6): alih KUALITAS di player yang sama —
      * direct 720p ↔ direct 360p (Media3 tetap Media3), seperti aslinya
-     * yang mengganti SD↔HD di ExoPlayer yang sama. TIDAK PERNAH pindah ke
-     * WebView dari tombol ini (perilaku lama: 720p direct ↔ embed — itu
-     * yang membuat Faygo melihat kontrol player website).
+     * yang mengganti SD↔HD di ExoPlayer yang sama.
      *
      * Bila tier 360p belum ada di daftar (ekstrak Blogger lazy belum
      * jalan), ketuk tombol memicu fetch Blogger sekali — bila hasilnya
@@ -742,14 +617,13 @@ class VideoPlayActivity : BaseActivity() {
     private fun onQualityToggle() {
         val all = sources ?: return
         val current = currentSource ?: return
-        if (isWebViewMode) return // Di embed tidak ada toggle kualitas.
-        val hasHdDirect = all.candidates.any { it.isHd && !it.isWebView }
-        val hasSdDirect = all.candidates.any { !it.isHd && !it.isWebView }
+        val hasHdDirect = all.candidates.any { it.isHd }
+        val hasSdDirect = all.candidates.any { !it.isHd }
         if (!hasHdDirect && !hasSdDirect) return
         val restore = player?.currentPosition ?: 0L
         if (current.isHd) {
             // 720p → 360p (direct).
-            val sdIndex = all.candidates.indexOfFirst { !it.isHd && !it.isWebView }
+            val sdIndex = all.candidates.indexOfFirst { !it.isHd }
             if (sdIndex >= 0) {
                 persistResume()
                 isHd = false
@@ -758,12 +632,12 @@ class VideoPlayActivity : BaseActivity() {
                 return
             }
             // Tier 360p belum ada — coba ekstrak Blogger sekali (lazy,
-            // pola yang sama seperti tryNextCandidate sebelum jatuh ke
-            // embed): bila ada itag 18, sisipkan lalu putar.
+            // pola yang sama seperti tryNextCandidate): bila ada itag 18,
+            // sisipkan lalu putar.
             fetchBloggerForQualitySwitch(restore)
         } else {
             // 360p → 720p (direct).
-            val hdIndex = all.candidates.indexOfFirst { it.isHd && !it.isWebView }
+            val hdIndex = all.candidates.indexOfFirst { it.isHd }
             if (hdIndex >= 0) {
                 persistResume()
                 isHd = true
@@ -775,7 +649,7 @@ class VideoPlayActivity : BaseActivity() {
 
     /**
      * Fetch Blogger lazy untuk alih kualitas (bukan untuk fallback):
-     * sisipkan kandidat Blogger hasil ekstrak sebelum embed, lalu putar
+     * sisipkan kandidat Blogger hasil ekstrak di akhir daftar, lalu putar
      * 360p bila ada. Bila tidak ada (iframe kosong / ekstrak gagal),
      * tetap di kualitas sekarang dan ikon resolution jadi `_off`.
      */
@@ -799,20 +673,19 @@ class VideoPlayActivity : BaseActivity() {
             // Episode sudah berganti selagi fetch berjalan — abaikan.
             if (sources !== snapshot) return@launch
             val current = sources ?: return@launch
-            val embedIndex = current.candidates.indexOfFirst { it.isWebView }
             // L-14: buang kandidat yang URL-nya sudah ada (Blogger
             // mungkin sudah di-fetch eager saat resolve() — tanpa cek
             // ini itag 22 masuk dua kali lalu diputar ulang).
             val fresh = blogger.filter { c ->
                 current.candidates.none { it.url == c.url }
             }
-            if (fresh.isNotEmpty() && embedIndex >= 0) {
+            if (fresh.isNotEmpty()) {
                 val updated = current.candidates.toMutableList()
-                updated.addAll(embedIndex, fresh)
+                updated.addAll(fresh)
                 sources = current.copy(candidates = updated)
             }
             val sdIndex = sources?.candidates
-                ?.indexOfFirst { !it.isHd && !it.isWebView } ?: -1
+                ?.indexOfFirst { !it.isHd } ?: -1
             if (sdIndex >= 0) {
                 persistResume()
                 isHd = false
@@ -844,9 +717,9 @@ class VideoPlayActivity : BaseActivity() {
         val all = sources
         val current = currentSource
         val resolution = binding.exoPlayerView.findViewById<ImageView>(R.id.resolution)
-        val hasHd = all?.candidates?.any { it.isHd && !it.isWebView } == true
-        // Tier SD = direct 360p (Blogger itag 18) — BUKAN embed WebView.
-        val hasSd = all?.candidates?.any { !it.isHd && !it.isWebView } == true
+        val hasHd = all?.candidates?.any { it.isHd } == true
+        // Tier SD = direct 360p (Blogger itag 18).
+        val hasSd = all?.candidates?.any { !it.isHd } == true
         val canToggle = hasHd && hasSd
         val isHdNow = current?.isHd == true
         resolution?.setImageResource(
@@ -864,10 +737,8 @@ class VideoPlayActivity : BaseActivity() {
      * Perilaku BUFFERING ala asli (gap G2, v2.0.6 #5): overlay next/prev
      * TAMPIL, tombol next/prev PNG + label kualitas DISEMBUNYIKAN, klik
      * ikon resolusi DINONAKTIFKAN; READY membalikkan semuanya.
-     * Hanya mode Media3 — di mode WebView kontrol aplikasi tidak tampil.
      */
     private fun updateBufferingUi(buffering: Boolean) {
-        if (isWebViewMode) return
         val playerView: PlayerView = binding.exoPlayerView
         val kualitas = playerView.findViewById<TextView>(R.id.kualitas_video)
         val resolution = playerView.findViewById<ImageView>(R.id.resolution)
@@ -913,30 +784,40 @@ class VideoPlayActivity : BaseActivity() {
      * terverifikasi live 2026-11-19):
      * - Pixeldrain + token Animekompi kedua episode menjawab HTTP 451
      *   (file di-takedown — kontrol Terlaris #1 tetap 200, jadi bukan
-     *   blok IP). KOREKSI v2.0.7 (O-1 Cari Bug): HTTP 451 DI-retry 8×
-     *   oleh DefaultLoadErrorHandlingPolicy Media3 (jeda 0,1,2,3,4,5,5
-     *   dtk, maks ~20 dtk/kandidat) — "gagal cepat / tanpa retry" untuk
-     *   451 adalah SALAH; onPlayerError baru tiba setelah retry itu
-     *   habis, lalu rantai maju ke Blogger itag 22/18 (terbukti ada).
+     *   blok IP). v2.0.8 item 3: HTTP 451/404/410 fail-fast via
+     *   override getRetryDelayMsFor (TIME_UNSET) — tanpa retry; error
+     *   transient (IO/5xx/408/429) tetap DI-retry 8× oleh
+     *   DefaultLoadErrorHandlingPolicy Media3 (jeda 0,1,2,3,4,5,5 dtk,
+     *   maks ~20 dtk/kandidat) — onPlayerError baru tiba setelah retry
+     *   itu habis (transient) atau langsung (451/404/410), lalu rantai
+     *   maju ke Blogger itag 22/18 (terbukti ada).
      * - itag 22 (720p) di koneksi lambat bisa terbuka TANPA error tapi
      *   tidak pernah cukup buffer untuk frame pertama — Media3 diam di
-     *   BUFFERING, tanpa error, tanpa retry, tanpa dialog. Itulah spinner
-     *   tanpa ujung.
+     *   BUFFERING, tanpa error, tanpa retry. Itulah spinner tanpa ujung.
      * Pengawas: selama BUFFERING, cek tiap 10 dtk totalBufferedDuration.
      * Bila buffer TIDAK bertambah 30 dtk (jaringan macet total) ATAU
      * buffering satu kandidat sudah 120 dtk (merambat tapi tak kunjung
      * cukup — 720p di 5,5 KB/dtk butuh ~86 dtk untuk 2,5 dtk buffer),
      * anggap kandidat macet → tryNextCandidate() (ke kandidat berikut —
-     * 360p / ok.ru / Samehadaku, lalu dialog).
+     * 360p / ok.ru / Samehadaku, lalu gagal jujur: toast + keluar).
      * Batas ini per kandidat, bukan per episode — kandidat berikut (360p,
      * ~1/4 byte 720p) punya peluang nyata untuk jalan di koneksi lambat.
      * Pengawas berlaku per kandidat di SEMUA lapis rantai (v2.0.7 item 17:
      * ambang TIDAK diubah untuk lapis ok.ru/Samehadaku).
+     * v2.0.8 item 1 — ambang pertumbuhan minimal: buffer yang hanya
+     * merambat < 500 ms per cek 10 dtk DIHITUNG MACET (kasus Ep 1180:
+     * buffer tumbuh ~450 ms/cek di 3 KB/dtk — cek lama "bertambah apa
+     * pun = tumbuh" me-reset timer selamanya, hanya cap 120 dtk yang
+     * menyelamatkan). Baseline (lastBufferedMs) DIMAJUKAN di setiap
+     * cek; hanya timer (lastGrowthAt) yang di-reset bila tumbuh ≥ 500
+     * ms. Kalibrasi: 500 ms/10 dtk = 50 ms/dtk → menuntut ≥ 3,35 KB/dtk
+     * (360p) / ≥ 9 KB/dtk (720p); 360p di 3 KB/dtk (~450 ms/cek)
+     * dimatikan di 30 dtk; 720p di 23 KB/dtk (~1.280 ms/cek) lolos,
+     * frame pertama ~20 dtk. Ambang 10/30/120 dtk TIDAK diubah.
      */
     private fun startStallWatch() {
         val exoPlayer = player ?: return
         val candidate = currentSource ?: return
-        if (isWebViewMode) return
         stallWatchJob?.cancel()
         val startedAt = SystemClock.elapsedRealtime()
         var lastBufferedMs = exoPlayer.totalBufferedDuration
@@ -949,14 +830,22 @@ class VideoPlayActivity : BaseActivity() {
                 if (currentSource !== candidate) break
                 val now = SystemClock.elapsedRealtime()
                 val buffered = p.totalBufferedDuration
-                if (buffered > lastBufferedMs) {
-                    lastBufferedMs = buffered
+                val growth = buffered - lastBufferedMs
+                // v2.0.8 item 1 — baseline DIMAJUKAN di setiap cek; HANYA
+                // timer yang di-reset bila tumbuh ≥ ambang. Varian
+                // "baseline maju hanya saat lolos" SALAH untuk Ep 1180:
+                // buffer merambat 450 ms/cek — baseline lama membuat
+                // growth kumulatif ≥ 500 ms di cek kedua, timer terus
+                // di-reset, dan 30 dtk tidak pernah terpicu.
+                lastBufferedMs = buffered
+                if (StallTracker.isGrowth(growth, STALL_MIN_GROWTH_MS)) {
                     lastGrowthAt = now
                 } else if (now - lastGrowthAt >= STALL_NO_GROWTH_MS) {
                     Log.w(
                         TAG_PLAYER,
                         "Ep $episode: kandidat ${candidate.kind} MACET — buffer " +
-                            "tidak bertambah ${STALL_NO_GROWTH_MS / 1000} dtk " +
+                            "tumbuh di bawah ambang ${STALL_MIN_GROWTH_MS}ms/cek " +
+                            "selama ${STALL_NO_GROWTH_MS / 1000} dtk " +
                             "(total ${buffered}ms) — lanjut ke kandidat berikut"
                     )
                     tryNextCandidate()
@@ -1060,8 +949,6 @@ class VideoPlayActivity : BaseActivity() {
         samehadakuAttemptedFallback = false
         bloggerAttemptedQuality = false
         stopStallWatch()
-        webViewFallbackDialogShown = false
-        exitWebViewMode()
         player?.stop()
         player?.clearMediaItems()
         sources = null
@@ -1109,31 +996,27 @@ class VideoPlayActivity : BaseActivity() {
     }
 
     /**
-     * Kandidat awal (v2.0.6, D4): video LANGSUNG dulu, embed terakhir.
+     * Kandidat awal (v2.0.6, D4; v2.0.8 item 5): video LANGSUNG dulu.
      * - Pref "1" (default): direct 720p pertama; bila tidak ada, direct
-     *   apa pun (360p); bila tidak ada direct sama sekali, embed.
-     * - Pref "0": direct 360p pertama; bila tidak ada, direct 720p;
-     *   bila tidak ada direct sama sekali, embed.
-     * Embed TIDAK PERNAH dipilih bila masih ada kandidat direct — yang
-     * Faygo lihat di v2.0.5 (player website Blogger) berasal dari aturan
-     * lama yang memilih embed dulu saat pref "0".
+     *   apa pun (360p).
+     * - Pref "0": direct 360p pertama; bila tidak ada, direct 720p.
+     * Tidak ada lagi kandidat embed — bila daftar kosong, -1 (pemanggil
+     * gagal jujur: toast + keluar).
      */
     private fun pickStartCandidate(all: EpisodeSources): Int {
         val candidates = all.candidates
         if (candidates.isEmpty()) return -1
-        val direct = candidates.filter { !it.isWebView }
-        if (direct.isEmpty()) return candidates.indexOfFirst { it.isWebView }
         val preferred = if (prefs.hdOnly == "1") {
-            direct.firstOrNull { it.isHd }
-                ?: direct.first()
+            candidates.firstOrNull { it.isHd }
+                ?: candidates.first()
         } else {
-            direct.firstOrNull { !it.isHd }
-                ?: direct.first()
+            candidates.firstOrNull { !it.isHd }
+                ?: candidates.first()
         }
         return candidates.indexOf(preferred)
     }
 
-    /** Mainkan kandidat ke-`index` (Media3 atau WebView). */
+    /** Mainkan kandidat ke-`index` (selalu Media3). */
     private fun playCandidate(index: Int, restorePosition: Long = 0L) {
         val all = sources ?: return
         val source = all.candidates.getOrNull(index) ?: return
@@ -1143,7 +1026,7 @@ class VideoPlayActivity : BaseActivity() {
         candidateStartedAtMs = SystemClock.elapsedRealtime()
         stopStallWatch()
         // Log TANPA URL (token stream sensitif) — host saja cukup untuk
-        // membedakan Pixeldrain / token / Blogger / embed di logcat.
+        // membedakan Pixeldrain / token / Blogger di logcat.
         Log.d(
             TAG_PLAYER,
             "Ep $episode: putar kandidat #$index kind=${source.kind} " +
@@ -1152,17 +1035,18 @@ class VideoPlayActivity : BaseActivity() {
         // Tinggi video kandidat lama tidak berlaku untuk kandidat baru —
         // label kembali ke label sumber sampai onVideoSizeChanged tiba.
         videoHeight = 0
-        if (source.isWebView) {
-            enterWebViewMode(source, restorePosition)
-        } else {
-            exitWebViewMode()
-            startMedia3(source, restorePosition)
-        }
+        startMedia3(source, restorePosition)
         updateQualityUi()
         updateDownloadUi()
     }
 
-    /** Kandidat sekarang error → coba kandidat berikutnya; habis → keluar jujur. */
+    /**
+     * Kandidat sekarang error → coba kandidat berikutnya; bila daftar
+     * habis, coba SATU lapis malas yang belum dicoba (Blogger → ok.ru →
+     * Samehadaku); bila tidak ada lapis tersisa → gagal jujur (toast +
+     * keluar, seperti asli). TIDAK ADA LAGI dialog "Putar lewat
+     * website?" (v2.0.8 item 5, D-web).
+     */
     private fun tryNextCandidate() {
         val all = sources ?: return
         val nextIndex = candidateIndex + 1
@@ -1171,39 +1055,32 @@ class VideoPlayActivity : BaseActivity() {
             "Ep $episode: kandidat #$candidateIndex (${currentSource?.kind}) " +
                 "habis — coba #$nextIndex"
         )
-        if (nextIndex >= all.candidates.size) {
-            toast(getString(R.string.gagal_memutar, episode))
-            saveAndFinish()
+        if (nextIndex < all.candidates.size) {
+            val restore = player?.currentPosition ?: 0L
+            playCandidate(nextIndex, restore)
             return
         }
-        val next = all.candidates[nextIndex]
-        // Rantai fallback lintas-sumber (v2.0.7 item 14–16): sebelum jatuh
-        // ke embed (kandidat terakhir), coba SATU lapis malas yang belum
-        // dicoba — urutan Blogger (lapis 1) → ok.ru (lapis 2) →
-        // Samehadaku (lapis 3). Tiap lapis sekali per episode; hasil
-        // disisipkan sebelum embed supaya urutan prioritas tetap utuh,
-        // tanpa membayar fetch lapis itu di tiap resolve.
-        if (next.isWebView && tryLazyLayer(nextIndex)) return
-        val restore = player?.currentPosition ?: 0L
-        playNextOrAsk(nextIndex, restore)
+        if (tryLazyLayer()) return
+        toast(getString(R.string.gagal_memutar, episode))
+        saveAndFinish()
     }
 
     /**
      * Coba SATU lapis malas berikutnya (Blogger → ok.ru → Samehadaku):
      * true = fetch diluncurkan (kelanjutan ditangani coroutine-nya);
-     * false = tidak ada lapis tersisa (pemanggil lanjut ke embed/dialog).
-     * Lapis yang tidak punya bahan (tanpa URL iframe/embed, tanpa judul
-     * serial) ditandai sudah dicoba lalu DILEWATI — rantai tidak berhenti
-     * di lapis yang memang tidak bisa dicoba.
+     * false = tidak ada lapis tersisa (pemanggil gagal jujur: toast +
+     * keluar). Lapis yang tidak punya bahan (tanpa URL iframe/embed,
+     * tanpa judul serial) ditandai sudah dicoba lalu DILEWATI — rantai
+     * tidak berhenti di lapis yang memang tidak bisa dicoba.
      */
-    private fun tryLazyLayer(nextIndex: Int): Boolean {
+    private fun tryLazyLayer(): Boolean {
         val all = sources ?: return false
         // Lapis 1: Blogger (Animekompi).
         if (!bloggerAttemptedFallback) {
             bloggerAttemptedFallback = true
             val iframeUrl = all.bloggerIframeUrl
             if (!iframeUrl.isNullOrBlank()) {
-                launchLazyLayer(nextIndex, "Blogger") {
+                launchLazyLayer("Blogger") {
                     app().playerRepository.fetchBloggerCandidates(iframeUrl)
                 }
                 return true
@@ -1214,7 +1091,7 @@ class VideoPlayActivity : BaseActivity() {
             okRuAttemptedFallback = true
             val okRuUrl = all.okRuEmbedUrl
             if (!okRuUrl.isNullOrBlank()) {
-                launchLazyLayer(nextIndex, "ok.ru") {
+                launchLazyLayer("ok.ru") {
                     app().playerRepository.fetchOkRuCandidates(okRuUrl)
                 }
                 return true
@@ -1226,7 +1103,7 @@ class VideoPlayActivity : BaseActivity() {
             val title = all.animeTitle
             if (title.isNotBlank()) {
                 val episodeNumber = all.episodeNumber
-                launchLazyLayer(nextIndex, "Samehadaku") {
+                launchLazyLayer("Samehadaku") {
                     app().playerRepository.fetchSamehadakuCandidates(
                         title, episodeNumber
                     )
@@ -1238,18 +1115,15 @@ class VideoPlayActivity : BaseActivity() {
     }
 
     /**
-     * Luncurkan fetch satu lapis malas; sisipkan hasilnya, lanjut putar.
-     * Bila lapis ini tidak menghasilkan kandidat, nextIndex masih embed —
-     * JANGAN masuk WebView otomatis (lihat playNextOrAsk). Bila
-     * menghasilkan, nextIndex kini menunjuk kandidat pertama lapis baru.
-     * Lapis berikut belum dicoba saat itu — tidak masalah: bila kandidat
-     * baru ini gagal, tryNextCandidate dipanggil lagi dan tryLazyLayer
-     * melanjutkan dari lapis berikutnya (flag lapis ini sudah true).
+     * Luncurkan fetch satu lapis malas; tambahkan hasilnya di AKHIR
+     * daftar lalu putar kandidat pertama lapis baru. Bila lapis ini
+     * tidak menghasilkan kandidat, coba lapis berikutnya (tryNextCandidate
+     * lagi — flag lapis ini sudah true, jadi lanjut ke lapis berikut;
+     * bila tidak ada lapis tersisa → gagal jujur: toast + keluar).
      * 429 (RateLimitException) TIDAK ditelan — toast rate-limit + keluar
      * (L-2), sama seperti jalur resolve() awal.
      */
     private fun launchLazyLayer(
-        nextIndex: Int,
         layerName: String,
         fetch: suspend () -> List<PlayableSource>
     ) {
@@ -1263,9 +1137,7 @@ class VideoPlayActivity : BaseActivity() {
                 throw e
             } catch (e: RateLimitException) {
                 // L-2: 429 di lapis mana pun = toast rate-limit + keluar
-                // (tanpa retry) — jangan telan jadi dialog
-                // "Putar lewat website?" (penyebabnya bukan "tidak ada
-                // file", melainkan API dibatasi).
+                // (tanpa retry).
                 hideInitialLoading()
                 toast(getString(R.string.terlalu_banyak_permintaan))
                 saveAndFinish()
@@ -1287,71 +1159,27 @@ class VideoPlayActivity : BaseActivity() {
             }
             if (fresh.isNotEmpty()) {
                 val updated = current.candidates.toMutableList()
-                updated.addAll(nextIndex, fresh)
+                updated.addAll(fresh)
                 sources = current.copy(candidates = updated)
+                val restore = player?.currentPosition ?: 0L
+                playCandidate(updated.size - fresh.size, restore)
+            } else {
+                tryNextCandidate()
             }
-            val restore = player?.currentPosition ?: 0L
-            playNextOrAsk(nextIndex, restore)
         }
-    }
-
-    /**
-     * Lanjutkan ke kandidat `index` — dengan SATU pengecualian (v2.0.6
-     * #1b): bila kandidat itu EMBED, JANGAN masuk WebView otomatis dari
-     * kontrol aplikasi. Semua kandidat direct sudah dicoba (termasuk
-     * retry internal Media3 8× + ekstrak lazy Blogger/ok.ru/Samehadaku)
-     * — tanya pengguna dulu lewat dialog; hanya ketukan eksplisit "Putar
-     * lewat website" yang boleh memindahkan player ke website. Tanpa
-     * ketukan, player keluar dengan toast jujur (seperti asli).
-     */
-    private fun playNextOrAsk(index: Int, restore: Long) {
-        val all = sources ?: return
-        val next = all.candidates.getOrNull(index) ?: return
-        if (next.isWebView) {
-            showWebViewFallbackDialog(index, restore)
-        } else {
-            playCandidate(index, restore)
-        }
-    }
-
-    /**
-     * Semua kandidat direct habis, kandidat berikut adalah embed — tanya
-     * pengguna sebelum pindah ke website (v2.0.6 #1b, D4b). Dialog sekali
-     * per episode (webViewFallbackDialogShown). "Tidak" / batal (tombol
-     * kembali) = toast jujur + keluar, seperti asli saat video gagal.
-     */
-    private fun showWebViewFallbackDialog(embedIndex: Int, restorePosition: Long) {
-        // L-12: jangan tampilkan dialog di Activity yang sedang selesai
-        // (jendela finish() → onDestroy() — lifecycleScope belum batal
-        // di situ; dialog di Activity yang selesai = window-leak/crash).
-        if (isFinishing || isDestroyed) return
-        if (webViewFallbackDialogShown) return
-        webViewFallbackDialogShown = true
-        Log.d(TAG_PLAYER, "Ep $episode: semua direct habis — dialog fallback WebView")
-        hideInitialLoading()
-        binding.progressBar.visibility = View.GONE
-        AlertDialog.Builder(this, alertTheme())
-            .setTitle(R.string.webview_fallback_judul)
-            .setMessage(R.string.webview_fallback_isi)
-            .setPositiveButton(R.string.putar_lewat_website) { _, _ ->
-                playCandidate(embedIndex, restorePosition)
-            }
-            .setNegativeButton(R.string.tidak) { _, _ ->
-                toast(getString(R.string.gagal_memutar, episode))
-                saveAndFinish()
-            }
-            .setOnCancelListener {
-                toast(getString(R.string.gagal_memutar, episode))
-                saveAndFinish()
-            }
-            .setCancelable(true)
-            .show()
     }
 
     private fun startMedia3(source: PlayableSource, restorePosition: Long) {
         val exoPlayer = player ?: return
         hasFirstFrame = false
         showInitialLoading()
+        // v2.0.8 item 2: Referer per-kind (headersFor) — dipasang di
+        // factory SEBELUM media item dipasang; playback strictly
+        // sequential (satu kandidat aktif) jadi aman dipakai ulang.
+        // ok.ru → Referer https://ok.ru/; yang lain → tanpa Referer.
+        httpDataSourceFactory.setDefaultRequestProperties(
+            PlayerRepository.headersFor(source.kind)
+        )
         // Tangkap nomor episode + sumber SAAT INI (sinkron): coroutine di
         // bawah berjalan terpisah — bila episode berganti selagi baca DB,
         // resume harus memakai episode sumber ini (#2), dan media item
@@ -1387,48 +1215,8 @@ class VideoPlayActivity : BaseActivity() {
         }
     }
 
-    private fun enterWebViewMode(source: PlayableSource, restorePosition: Long) {
-        webViewEntryPositionMs = if (restorePosition > 0) {
-            restorePosition
-        } else {
-            player?.currentPosition ?: 0L
-        }
-        isWebViewMode = true
-        webViewErrorShown = false
-        player?.pause()
-        hideInitialLoading()
-        binding.exoPlayerView.visibility = View.GONE
-        binding.webViewContainer.visibility = View.VISIBLE
-        binding.webViewTitle.text =
-            "$animeTitle — " + if (isMovie) getString(R.string.movie_label)
-            else getString(R.string.episode_label, episode)
-        // v2.0.6 #2: label kualitas bilah WebView = label sumber embed yang
-        // sebenarnya (dari model kandidat) — JANGAN hardcode. Bila sumber
-        // tidak punya label, sembunyikan (jangan berbohong).
-        binding.webViewQualityLabel.text = source.qualityLabel
-        binding.webViewQualityLabel.visibility =
-            if (source.qualityLabel.isBlank()) View.GONE else View.VISIBLE
-        val hasHd = sources?.candidates?.any { it.isHd && !it.isWebView } == true
-        binding.webViewQuality720.visibility =
-            if (hasHd) View.VISIBLE else View.GONE
-        binding.webView.onResume()
-        // M1: kunci navigasi ke host URL embed ini sebelum memuat.
-        webViewAllowedHost = Uri.parse(source.url).host?.lowercase()
-        binding.webView.loadUrl(source.url)
-    }
-
-    private fun exitWebViewMode() {
-        if (!isWebViewMode) return
-        isWebViewMode = false
-        webViewAllowedHost = null
-        binding.webView.onPause()
-        binding.webView.stopLoading()
-        binding.webViewContainer.visibility = View.GONE
-        binding.exoPlayerView.visibility = View.VISIBLE
-    }
-
     /**
-     * Tombol Unduh di kontrol player / bilah WebView (v2.0.5, D1):
+     * Tombol Unduh di kontrol player (v2.0.5, D1):
      * unduh file .mp4 langsung (Pixeldrain) TANPA menutup player —
      * tonton lanjut selagi mengunduh. Tanpa downloadUrl, tombol
      * disembunyikan updateDownloadUi() (bukan toast gagal).
@@ -1442,8 +1230,6 @@ class VideoPlayActivity : BaseActivity() {
     private fun updateDownloadUi() {
         val hasDownload = sources?.downloadUrl != null
         binding.exoPlayerView.findViewById<View>(R.id.downloadBtn)?.visibility =
-            if (hasDownload) View.VISIBLE else View.GONE
-        binding.webViewDownload.visibility =
             if (hasDownload) View.VISIBLE else View.GONE
     }
 
@@ -1494,14 +1280,6 @@ class VideoPlayActivity : BaseActivity() {
     }
 
     private fun onPlaybackEnded() {
-        // Tidak berlaku di mode WebView (tidak ada event akhir video).
-        // v2.0.6 #6 — KEPUTUSAN: auto-next DINONAKTIFKAN di mode WebView.
-        // Tidak ada event ENDED dari halaman embed (tanpa JS bridge), dan
-        // polling durasi/posisi per-embed (Blogger, abyssplayer, VidHide,
-        // mp4upload — masing-masing beda) rapuh + menambah permukaan
-        // serangan; pengguna di mode embed keluar lewat FAB / kembali ke
-        // daftar episode. Jangan pura-pura ada auto-next di embed.
-        if (isWebViewMode) return
         // Aturan asli: film → keluar (walau teruskan "true"); episode
         // terakhir / Putar Sekali → keluar; sisanya → episode berikut.
         // (`lanjut` asli tidak punya padanan data di Sanka — gerbang v2
@@ -1572,19 +1350,13 @@ class VideoPlayActivity : BaseActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (isWebViewMode) {
-            binding.webView.onPause()
-        } else {
-            wasPlaying = player?.isPlaying == true
-            player?.pause()
-        }
+        wasPlaying = player?.isPlaying == true
+        player?.pause()
     }
 
     override fun onResume() {
         super.onResume()
-        if (isWebViewMode) {
-            binding.webView.onResume()
-        } else if (wasPlaying) {
+        if (wasPlaying) {
             player?.play()
         }
     }
@@ -1595,13 +1367,6 @@ class VideoPlayActivity : BaseActivity() {
             runCatching { cm.unregisterNetworkCallback(callback) }
         }
         saveResume()
-        // WebView dihancurkan eksplisit (hindari kebocoran memori).
-        fullscreenView?.let { binding.videoLayout.removeView(it) }
-        fullscreenView = null
-        runCatching {
-            binding.webViewContainer.removeView(binding.webView)
-            binding.webView.destroy()
-        }
         stopStallWatch()
         player?.release()
         player = null
@@ -1627,21 +1392,14 @@ class VideoPlayActivity : BaseActivity() {
 
     /**
      * Tulis posisi tonton SEKARANG (−30 dtk) — tanpa penjaga sekali-jalan,
-     * dipakai simpan-saat-seek (aturan asli) + ganti kualitas. Posisi di
-     * mode WebView tetap best-effort (posisi saat masuk WebView).
+     * dipakai simpan-saat-seek (aturan asli) + ganti kualitas.
      */
     private fun persistResume() {
         // Hanya simpan bila episode sudah ter-resolve (pernah mulai diputar).
         if (sources == null) return
-        val position = if (isWebViewMode) {
-            // Mode WebView: posisi video tidak bisa dibaca — pakai posisi
-            // saat masuk WebView (best-effort, desain.md §14.5).
-            (webViewEntryPositionMs - Constants.RESUME_REWIND_MS).coerceAtLeast(0L)
-        } else {
-            val exoPlayer = player ?: return
-            (exoPlayer.currentPosition - Constants.RESUME_REWIND_MS)
-                .coerceAtLeast(0L)
-        }
+        val exoPlayer = player ?: return
+        val position = (exoPlayer.currentPosition - Constants.RESUME_REWIND_MS)
+            .coerceAtLeast(0L)
         // appScope (bukan lifecycleScope): tulis harus selesai walau
         // Activity sudah dihancurkan.
         app().appScope.launch {
@@ -1671,17 +1429,47 @@ class VideoPlayActivity : BaseActivity() {
      * lama dari default Media3 (3× → 8×, backoff 0/1/2/3/4/5/5/5 dtk
      * warisan DefaultLoadErrorHandlingPolicy). Error fatal (parse, file
      * tidak ada, posisi di luar jangkauan) tetap langsung menyerah tanpa
-     * retry (warisan). HTTP 4xx/5xx ikut di-retry internal (bukan daftar
-     * no-retry di Media3 1.2.1) — setelah 8× gagal, error naik ke
-     * onPlayerError lalu tryNextCandidate maju ke kandidat berikut;
-     * kandidat direct yang benar-benar mati tetap dihabiskan dulu sebelum
-     * fallback ke WebView ditawarkan (lewat dialog, bukan otomatis).
+     * retry (warisan). v2.0.8 item 3: HTTP 451/404/410 fail-fast via
+     * override getRetryDelayMsFor (TIME_UNSET) — tanpa retry; error
+     * transient (IO/5xx/408/429) tetap DI-retry 8× — setelah 8× gagal,
+     * error naik ke onPlayerError lalu tryNextCandidate maju ke kandidat
+     * berikut; kandidat direct yang benar-benar mati tetap dihabiskan
+     * dulu sebelum gagal jujur (toast + keluar).
      */
     private class DirectLoadErrorHandlingPolicy :
         DefaultLoadErrorHandlingPolicy(MIN_DIRECT_LOAD_RETRIES) {
         companion object {
             /** Retry load internal per kandidat direct (default Media3: 3). */
             const val MIN_DIRECT_LOAD_RETRIES = 8
+        }
+
+        /**
+         * Fail-fast 4xx permanen (v2.0.8 item 3): HTTP 400..499 KECUALI
+         * 408/429 (file di-takedown / URL mati — retry 8× hanya buang
+         * waktu ~20 dtk) → C.TIME_UNSET (tanpa retry, langsung fatal →
+         * onPlayerError → tryNextCandidate). 408 (timeout) / 429 (rate
+         * limit) / 5xx / IO = transient → super (jeda default
+         * 0/1/2/3/4/5/5/5 dtk, tetap 8×). 429 CDN ≠ 429 API Sanka
+         * (kategori berbeda: yang satu pembatas host file, yang satu
+         * pembatas API — L-2 mengatur API; di sini 429 tetap di-retry
+         * karena pembatas CDN biasanya sesaat). Keputusan murni di
+         * HttpFailFast (PlayerRepository.kt) supaya harness bisa
+         * mengujinya tanpa Media3. Bentuk exception terverifikasi dari
+         * sources jar Media3 1.2.1: InvalidResponseCodeException
+         * (final, field responseCode) tiba LANGSUNG sebagai
+         * loadErrorInfo.exception (Loader.java catch IOException →
+         * MSG_IO_EXCEPTION, tanpa pembungkus) — TIDAK ada unwrap.
+         */
+        override fun getRetryDelayMsFor(
+            loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo
+        ): Long {
+            val code = (loadErrorInfo.exception as?
+                HttpDataSource.InvalidResponseCodeException)?.responseCode
+            return if (code != null && HttpFailFast.isPermanent(code)) {
+                C.TIME_UNSET
+            } else {
+                super.getRetryDelayMsFor(loadErrorInfo)
+            }
         }
     }
 }

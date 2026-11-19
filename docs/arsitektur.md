@@ -78,8 +78,7 @@ Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
    `playCandidate(pickStartCandidate(resolved))` — masuk player langsung
    memutar (pref `hdOnly` tetap dihormati). **Unduh PINDAH ke kontrol
    player** (D1): tombol ikon `download_new` di kolom kanan kontrol Media3
-   (`downloadBtn`, `exo_playback_control_view.xml`) + bilah atas mode
-   WebView (`webViewDownload`, `activity_video.xml`); keduanya memanggil
+   (`downloadBtn`, `exo_playback_control_view.xml`) memanggil
    `downloadSource(downloadUrl, finishAfter=false)` — unduh TIDAK lagi
    menutup player. Tombol hanya tampil bila ada file .mp4 langsung
    (Pixeldrain) — `updateDownloadUi()`. PENYIMPANGAN disengaja dari REA
@@ -142,8 +141,7 @@ Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
    tidak bisa diketuk; READY membalikkan; (6) resume disimpan saat seek
    (penanda seek programatis supaya tidak rewind berulang −30 dtk) +
    ENDED → episode berikut (film / `teruskan=="false"` / episode terakhir
-   → keluar); auto-next di WebView DINONAKTIFKAN (tidak ada event ENDED
-   dari embed; polling durasi per-embed rapuh — diputuskan Frontend);
+   → keluar);
    (7) Beranda render dari cache dulu — `HomeFragment.load()` menampilkan
    `homeCached()` (cache 10 menit) segera, lalu tetap fetch segar dan
    perbarui tampilan; `offscreenPageLimit` tetap 10 (tidak terbukti
@@ -167,16 +165,24 @@ Perilaku yang diharapkan di HP: Beranda + Jelajahi terisi.
    (1) Pixeldrain direct 720p dari `sources[]` (`kind: direct`, terbukti
    3/4 episode); (2) stream token Animekompi dari `mirrors[]` type `mp4`
    (206 terbukti); (3) Blogger hasil ekstrak — itag 22 (720p) → itag 18
-   (360p); (4) WebView embed (fallback terakhir). **v2.0.6 (D4): player
-   WAJIB mulai dari direct** — default pref `hdOnly` kini `"1"`;
-   `pickStartCandidate` tidak pernah memilih embed bila masih ada
-   kandidat direct. Bila satu sumber direct gagal → fallback otomatis
-   ke direct berikut (termasuk ekstrak Blogger lazy sekali); **ke embed
-   TIDAK otomatis** — bila semua direct habis, tampil dialog tanya
-   ("Putar lewat website?") dan hanya ketukan eksplisit yang memindahkan
-   player ke website (anti-flip #1b — laporan Faygo 17:27 WIB). Jaringan
-   lambat bukan kegagalan: timeout HTTP video 15 dtk (connect) / 30 dtk
-   (read) + retry load internal 8× (default Media3: 8/8 dtk, 3×).
+   (360p); (4) ok.ru hasil ekstrak tier hd → sd (lapis 2, v2.0.7);
+   (5) Samehadaku Blogger hasil ekstrak itag 22 → 18 (lapis 3, v2.0.7).
+   **v2.0.6 (D4): player WAJIB mulai dari direct** — default pref `hdOnly`
+   kini `"1"`; `pickStartCandidate` memilih kandidat direct pertama
+   sesuai pref. Bila satu sumber direct gagal → fallback otomatis
+   ke direct berikut (termasuk ekstrak Blogger lazy sekali + lapis malas
+   ok.ru/Samehadaku bila daftar habis); **bila semua gagal → gagal jujur:
+   toast "Gagal memutar Episode {n}" + keluar, seperti asli.**
+   **v2.0.8 (D-web): opsi "Putar lewat website?" + jalur pemutar website
+   DIHAPUS TOTAL** — tidak ada lagi dialog tanya-fallback, tidak ada lagi
+   kandidat embed. Jaringan lambat bukan kegagalan: timeout HTTP video
+   15 dtk (connect) / 30 dtk (read) + retry load internal 8× (default
+   Media3: 8/8 dtk, 3×); pengawas macet-buffering memakai ambang
+   pertumbuhan minimal 500 ms/cek 10 dtk (buffer yang hanya merambat
+   dihitung macet — kasus Ep 1180); playback memakai UA browser +
+   Referer per-kind (ok.ru → `https://ok.ru/`); HTTP 451/404/410
+   fail-fast tanpa retry, error transient (IO/5xx/408/429) tetap
+   di-retry 8×.
    URL ber-token / hasil ekstrak terikat waktu + IP — ambil segar tiap
    kali putar, **JANGAN** disimpan di DB/riwayat.
 5. **Riwayat** — Room tabel `video` + `favorite`. **Kunci berubah:**
@@ -243,7 +249,7 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
   `AnimeloversApp` untuk mengaktifkan Firebase (lihat
   `docs/firebase-setup.md`).
 
-## Player (Media3 + WebView)
+## Player (Media3)
 
 - `ExoPlayer` + `DefaultLoadControl` (buffer 50 dtk, mulai 2,5 dtk).
 - MediaSource utama: **MP4 progresif** (`ProgressiveMediaSource`) untuk
@@ -251,7 +257,7 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
 - **TIDAK ADA tombol Subtitle** (hardsub tidak punya track) dan tidak ada
   logika ganti track subtitle.
 - Kualitas: tombol alih `resolution` — direct 720p ↔ direct 360p **di
-  player yang sama** (Media3), BUKAN ganti mesin (Media3 ↔ WebView);
+  player yang sama** (Media3), BUKAN ganti mesin pemutar;
   bila hanya satu tier direct, tampil varian `_off` dan tidak bisa
   diketuk. Bila tier 360p belum ada di daftar, ketuk `resolution` memicu
   fetch Blogger lazy sekali. Pref `hd_only` default `"1"` (v2.0.6 D4:
@@ -263,21 +269,20 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
 - **Anti-flip (v2.0.6 #1b):** jaringan lambat BUKAN kegagalan — timeout
   HTTP video 15 dtk (connect) / 30 dtk (read) + retry load internal 8×
   (default Media3: 8/8 dtk, 3×) supaya kandidat direct yang sama dicoba
-  ulang dulu sebelum dianggap gagal. Bila semua direct habis, fallback ke
-  WebView DITANYAKAN lewat dialog (`showWebViewFallbackDialog`,
-  sekali per episode) — hanya ketukan "Putar lewat website" yang
-  memindahkan player ke website; "Tidak"/batal = toast jujur + keluar
-  (seperti asli). Jalur kandidat-berikut WAJIB lewat `playNextOrAsk` —
-  tidak ada lagi `playCandidate(nextIndex...)` langsung. Badge `"720p"` di
-  bilah WebView tetap ada sebagai jalan pindah WebView → Media3 (ketukan
-  pengguna, arah sebaliknya).
-- Mode WebView (embed Blogger/Abyssplayer, fallback terakhir): bilah atas
-  minimal + kontrol bawaan halaman embed; Berikutnya/Sebelumnya +
-  auto-play-next TIDAK berlaku di mode WebView (aplikasi tidak bisa
-  mendeteksi video selesai — auto-next DINONAKTIFKAN, bukan dipura-pura).
+  ulang dulu sebelum dianggap gagal. **v2.0.8 (D-web):** bila semua direct
+  habis → gagal jujur (toast + keluar, seperti asli) — dialog "Putar lewat
+  website?" + jalur pemutar website DIHAPUS TOTAL; `tryNextCandidate`
+  maju ke kandidat berikut, lalu SATU lapis malas (Blogger → ok.ru →
+  Samehadaku), lalu gagal jujur. HTTP 451/404/410 fail-fast tanpa retry
+  (override `getRetryDelayMsFor` → `TIME_UNSET`); error transient
+  (IO/5xx/408/429) tetap di-retry 8×. Pengawas macet-buffering: buffer
+  yang hanya merambat < 500 ms/cek 10 dtk dihitung MACET (kasus Ep 1180);
+  baseline dimajukan di setiap cek, hanya timer yang di-reset bila tumbuh
+  ≥ 500 ms. Playback memakai UA browser + Referer per-kind (ok.ru →
+  `https://ok.ru/`); Blogger di-fetch dengan UA + Referer Sanka.
 - Buffering (v2.0.6 #5, ala asli): saat BUFFERING overlay next/prev
   TAMPIL, tombol next/prev PNG + label kualitas DISEMBUNYIKAN, klik ikon
-  resolusi DINONAKTIFKAN; READY membalikkan. Hanya mode Media3.
+  resolusi DINONAKTIFKAN; READY membalikkan.
 - Resume (v2.0.6 #6, ala asli): disimpan −30 detik saat seek / ganti
   kualitas / keluar; seek programatis (resume saat mulai) ditandai supaya
   tidak rewind berulang. ENDED → episode berikut (bila `teruskan=="true"`
@@ -297,11 +302,11 @@ Satu aturan di `SankaRepository.isEcchi` + `isEcchiUnlocked`:
 - Yang diunduh kini **file .mp4 betulan** — URL Pixeldrain direct dari
   `sources[]` (sama dengan sumber streaming). `downloads[]` Sanka berisi
   halaman unduhan saja (bukan file langsung) — jangan dipakai. Bila
-  episode tanpa Pixeldrain: tidak ada unduhan video (hanya embed).
+  episode tanpa Pixeldrain: tidak ada unduhan video.
 - Tanpa pilihan kualitas (keputusan Faygo D3) — unduh kualitas yang
   sedang diputar.
-- v2.0.5 (D1): tombol Unduh di kontrol player (Media3) + bilah atas mode
-  WebView; unduh tidak lagi menutup player (dulu lewat dialog mode).
+- v2.0.5 (D1): tombol Unduh di kontrol player (Media3); unduh tidak
+  lagi menutup player (dulu lewat dialog mode).
 
 ## Yang sengaja TIDAK ada (PRD v2 §13)
 
@@ -321,8 +326,9 @@ sistem subtitle (VTT/translate/tracking), backend lokal.
   penuh tetap CI hijau (`android-ci.yml`).
 - 1080p streaming TIDAK ADA di sumber ini (0/4 episode contoh) — label
   kualitas aplikasi tidak boleh menulis 1080p.
-- Pixeldrain 720p hanya di 3/4 episode contoh — sisanya embed (fallback
-  terakhir, v2.0.6: hanya lewat dialog tanya, tidak otomatis).
+- Pixeldrain 720p hanya di 3/4 episode contoh — sisanya mengandalkan
+  token/Blogger/ok.ru/Samehadaku; bila semua lapis kosong, player gagal
+  jujur (toast + keluar, v2.0.8 D-web).
 - File 720p 142–264 MB/episode — di koneksi lambat, frame pertama bisa
   lama; player menampilkan spinner + "Memuat video…" yang jujur.
 - Sanka adalah scraper Animekompi tanpa kontrak resmi — bentuk respons

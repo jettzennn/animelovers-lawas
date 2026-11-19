@@ -17,9 +17,9 @@ import java.util.concurrent.TimeUnit
 /**
  * Hasil resolve satu episode — daftar kandidat putar + info pendukung.
  *
- * @property candidates kandidat Media3/WebView, terurut sesuai prioritas
- *   T1b (Pixeldrain 720p → token 720p → Blogger 22 → Blogger 18 → embed).
- * @property embedUrl URL embed untuk WebView (default_iframe / sumber embed).
+ * @property candidates kandidat Media3, terurut sesuai prioritas
+ *   T1b (Pixeldrain 720p → token 720p → Blogger 22 → Blogger 18 →
+ *   ok.ru hd → ok.ru sd → Samehadaku 22 → Samehadaku 18).
  * @property downloadUrl URL file .mp4 langsung (Pixeldrain) untuk
  *   DownloadManager — null bila episode tidak punya sumber Pixeldrain
  *   (downloads[] Sanka HANYA berisi halaman unduhan, bukan URL file).
@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
  * @property bloggerIframeUrl URL iframe Blogger untuk fetch lazy (#6):
  *   bila kandidat direct/token sudah ada, HTML Blogger TIDAK diambil saat
  *   resolve — player mengambilnya belakangan hanya bila semua kandidat
- *   itu gagal sebelum jatuh ke embed.
+ *   itu gagal.
  * @property animeTitle judul serial Animekompi (untuk pencocokan episode
  *   di Samehadaku — lapis 3, v2.0.7 item 16).
  * @property okRuEmbedUrl URL embed ok.ru episode ini (untuk fetch lazy
@@ -37,7 +37,6 @@ import java.util.concurrent.TimeUnit
  */
 data class EpisodeSources(
     val candidates: List<PlayableSource>,
-    val embedUrl: String?,
     val downloadUrl: String?,
     val episodeNumber: Int,
     val episodeTitle: String,
@@ -50,6 +49,32 @@ data class EpisodeSources(
 )
 
 /**
+ * Keputusan tumbuh-vs-macet pengawas buffering (v2.0.8 item 1) —
+ * fungsi MURNI supaya harness bisa mengujinya tanpa Media3:
+ * tumbuh ≥ ambang per cek 10 dtk = TUMBUH (timer di-reset);
+ * di bawah ambang = MACET (timer jalan terus). Dipakai startStallWatch
+ * (VideoPlayActivity): baseline DIMAJUKAN di setiap cek — jangan ubah
+ * aturan itu (varian baseline-saat-lolos gagal diam-diam untuk Ep 1180).
+ */
+object StallTracker {
+    fun isGrowth(growthMs: Long, minGrowthMs: Long): Boolean =
+        growthMs >= minGrowthMs
+}
+
+/**
+ * Keputusan fail-fast 4xx permanen (v2.0.8 item 3) — fungsi MURNI
+ * supaya harness bisa mengujinya tanpa Media3: HTTP 400..499 KECUALI
+ * 408 (timeout) / 429 (rate limit) = permanen (file di-takedown / URL
+ * mati) → tanpa retry. 408/429/5xx/IO = transient → tetap di-retry 8×.
+ * 429 CDN ≠ 429 API Sanka (kategori berbeda: yang satu pembatas host
+ * file, yang satu pembatas API — L-2 mengatur API).
+ */
+object HttpFailFast {
+    fun isPermanent(code: Int): Boolean =
+        code in 400..499 && code != 408 && code != 429
+}
+
+/**
  * Resolve episode Sanka menjadi sumber yang bisa diputar.
  *
  * Prioritas putar — RANTAI FALLBACK LINTAS-SUMBER (v2.0.7 item 14–16,
@@ -58,24 +83,24 @@ data class EpisodeSources(
  *     Blogger ekstrak (itag 22 → 18).
  *  2. ok.ru ekstraksi dari URL embed Animekompi (tier hd → sd).
  *  3. Samehadaku episode → Blogger ekstrak (itag 22 → 18).
- *  4. WebView embed (`default_iframe` atau sumber embed pertama) —
- *     fallback terakhir, HANYA lewat dialog "Putar lewat website?"
- *     sekali per episode (D4b v2.0.6).
+ *  4. Gagal jujur — toast + keluar, seperti asli (v2.0.8 item 5,
+ *     D-web: opsi "Putar lewat website?" + jalur pemutar website
+ *     DIHAPUS).
  *
  * Tiap lapis WAJIB mencoba mengambil file-nya dulu (ekstraksi) supaya
  * video tetap diputar di kontrol player aplikasi sendiri (Media3) —
- * tujuan rantai ini, bukan WebView. Lapis 2–3 MALAS: tidak di-fetch
- * bila lapis sebelumnya sukses (nol tambahan); diambil belakangan oleh
- * player hanya bila semua kandidat sebelumnya gagal (pola
+ * tujuan rantai ini. Lapis 2–3 MALAS: tidak di-fetch bila lapis
+ * sebelumnya sukses (nol tambahan); diambil belakangan oleh player
+ * hanya bila semua kandidat sebelumnya gagal (pola
  * fetchBloggerCandidates), KECUALI bila lapis 1 kosong sama sekali —
  * saat itu diambil saat resolve seperti Blogger (kalau tidak, player
- * langsung masuk WebView tanpa pernah mencoba lapis berikut).
+ * gagal tanpa pernah mencoba lapis berikut).
  *
  * URL hasil ekstrak/token diambil SEGAR tiap putar (di sini, saat
  * resolve) — TIDAK PERNAH disimpan di DB/riwayat (kedaluwarsa: expire +
  * sig + terikat IP). Fallback antar sumber OTOMATIS (player mencoba
  * kandidat berikutnya bila yang sekarang error) — tanpa tanya pengguna.
- * Bila semua gagal → dialog fallback WebView (sekali per episode).
+ * Bila semua gagal → toast + keluar (gagal jujur).
  */
 class PlayerRepository(
     private val sankaRepository: SankaRepository,
@@ -105,8 +130,8 @@ class PlayerRepository(
         // bila kandidat prioritas lebih tinggi (direct/token) sudah ada,
         // HTML Blogger TIDAK diambil sekarang (boros — satu request +
         // ~28 KB tiap putar). Player mengambilnya belakangan hanya bila
-        // semua kandidat itu gagal sebelum jatuh ke embed (lihat
-        // VideoPlayActivity.tryNextCandidate + fetchBloggerCandidates).
+        // semua kandidat itu gagal (lihat VideoPlayActivity.tryNextCandidate
+        // + fetchBloggerCandidates).
         // Bila tidak ada direct/token sama sekali, ambil sekarang seperti
         // dulu — Blogger adalah satu-satunya jalan 720p yang tersisa.
         val bloggerUrls = if (hasDirectOrToken(episode)) {
@@ -131,7 +156,7 @@ class PlayerRepository(
         // (2) ok.ru ekstraksi — MALAS bila lapis 1 ada (nol tambahan);
         // EAGER bila lapis 1 KOSONG sama sekali (tidak ada direct/token/
         // Blogger) — seperti Blogger di atas. Tanpa ini, episode
-        // embed-only langsung masuk WebView tanpa pernah mencoba ok.ru.
+        // embed-only langsung gagal tanpa pernah mencoba ok.ru.
         val hasLayer1 = hasDirectOrToken(episode) || bloggerUrls.isNotEmpty()
         val okRuUrls: Map<String, String> = if (hasLayer1) {
             emptyMap()
@@ -182,8 +207,8 @@ class PlayerRepository(
 
     /**
      * Ambil + ekstrak URL Blogger (lazy — dipanggil player hanya bila
-     * kandidat direct/token sudah gagal dan sebelum jatuh ke embed).
-     * Gagal jaringan / bukan Blogger → daftar kosong (fallback ke embed).
+     * kandidat direct/token sudah gagal dan sebelum mencoba lapis
+     * berikut). Gagal jaringan / bukan Blogger → daftar kosong.
      */
     suspend fun fetchBloggerCandidates(iframeUrl: String): List<PlayableSource> {
         // L-15: JANGAN runCatching di sini — ia menelan
@@ -204,7 +229,7 @@ class PlayerRepository(
     /**
      * Ambil + ekstrak tier video ok.ru (lapis 2 — lazy, dipanggil player
      * hanya bila semua kandidat lapis 1 gagal dan sebelum jatuh ke
-     * Samehadaku/embed). Gagal jaringan / bukan ok.ru / tanpa tier →
+     * Samehadaku). Gagal jaringan / bukan ok.ru / tanpa tier →
      * daftar kosong (lanjut ke lapis berikut, bukan error).
      */
     suspend fun fetchOkRuCandidates(embedUrl: String): List<PlayableSource> {
@@ -225,10 +250,10 @@ class PlayerRepository(
 
     /**
      * Ambil kandidat Samehadaku (lapis 3 — lazy, dipanggil player hanya
-     * bila lapis 1–2 gagal dan sebelum jatuh ke embed): cari episode
-     * yang sama di Samehadaku → URL Blogger-nya → ekstrak itag 22/18
-     * (pakai ulang fetchBloggerUrls). Gagal apa pun → daftar kosong
-     * (lanjut ke dialog, bukan error).
+     * bila lapis 1–2 gagal): cari episode yang sama di Samehadaku →
+     * URL Blogger-nya → ekstrak itag 22/18 (pakai ulang
+     * fetchBloggerUrls). Gagal apa pun → daftar kosong (gagal jujur,
+     * bukan error).
      */
     suspend fun fetchSamehadakuCandidates(
         seriesTitle: String,
@@ -274,10 +299,11 @@ class PlayerRepository(
         /**
          * Susun kandidat putar dari respons /episode + URL Blogger hasil
          * ekstrak — fungsi MURNI (tanpa jaringan, bisa diuji unit).
-         * Prioritas RANTAI FALLBACK (v2.0.7 item 14–16): (1) Pixeldrain
-         * direct 720p, (2) token Animekompi 720p, (3) Blogger itag 22 →
-         * 18, (4) ok.ru tier hd → sd, (5) Samehadaku Blogger itag 22 →
-         * 18, (6) WebView embed.
+         * Prioritas RANTAI FALLBACK (v2.0.7 item 14–16; v2.0.8 item 5):
+         * (1) Pixeldrain direct 720p, (2) token Animekompi 720p,
+         * (3) Blogger itag 22 → 18, (4) ok.ru tier hd → sd,
+         * (5) Samehadaku Blogger itag 22 → 18 — lalu gagal jujur
+         * (toast + keluar). Langkah (6) embed DIHAPUS (D-web).
          * (1b) "direct lain" DIHAPUS (L1): tidak ada host allowlist yang
          * bisa diberikan untuk kind "direct" generik — satu-satunya file
          * direct yang terverifikasi adalah Pixeldrain ("BerkasDrive" di
@@ -330,24 +356,8 @@ class PlayerRepository(
             // (5) Samehadaku Blogger hasil ekstrak (itag 22 → 18) — lapis 3.
             candidates += samehadakuCandidates
 
-            // (6) WebView embed — fallback terakhir. URL embed wajib https +
-            // host publik (L1): host literal IP/localhost ditolak.
-            val embedUrl = episode.defaultIframe
-                ?.takeIf { it.isNotBlank() && isHttpsPublicHost(it) }
-                ?: episode.sources.orEmpty()
-                    .firstOrNull {
-                        it.kind == "embed" && !it.url.isNullOrBlank() &&
-                            isHttpsPublicHost(it.url)
-                    }?.url
-            if (!embedUrl.isNullOrBlank()) {
-                candidates += PlayableSource(
-                    embedUrl, PlayableKind.EMBED, "480p", isWebView = true
-                )
-            }
-
             return EpisodeSources(
                 candidates = candidates,
-                embedUrl = embedUrl,
                 downloadUrl = downloadUrl,
                 episodeNumber = episode.episodeNumber,
                 episodeTitle = episode.title ?: "",
@@ -389,25 +399,6 @@ class PlayerRepository(
             if (uri.scheme?.lowercase() != "https") return null
             if (uri.host.isNullOrBlank()) return null
             return uri
-        }
-
-        /** Host literal IP / localhost — tidak boleh jadi tujuan video/unduh/embed. */
-        private fun isIpOrLocalhostHost(host: String): Boolean {
-            val h = host.lowercase()
-            if (h == "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true
-            if (':' in h) return true // literal IPv6
-            return h.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$"))
-        }
-
-        /**
-         * https + host BUKAN literal IP/localhost — untuk embed dan direct
-         * generik yang host-nya memang bervariasi (allowlist tidak mungkin:
-         * host embed di data live saja sudah blogger.com, abyssplayer.com,
-         * mecdn.website, ok.ru, rumble.com).
-         */
-        private fun isHttpsPublicHost(url: String?): Boolean {
-            val uri = parseHttpsUrl(url) ?: return false
-            return !isIpOrLocalhostHost(uri.host)
         }
 
         /**
@@ -599,17 +590,49 @@ class PlayerRepository(
         const val OKRU_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        /**
+         * Header Referer playback per-kind (v2.0.8 item 2) — fungsi
+         * MURNI supaya harness bisa mengujinya tanpa Media3: ok.ru →
+         * Referer https://ok.ru/ (host video; hardening — probe sandbox
+         * 2026-11-19 menunjukkan tidak ada perbedaan status/TTFB
+         * dengan/tanpa Referer, tapi origin jujur tidak merugikan);
+         * token/Blogger/Samehadaku/Pixeldrain → TANPA Referer sampai
+         * probe membuktikan perlu. UA dipasang di factory (setupPlayer),
+         * bukan per-request.
+         */
+        fun headersFor(kind: PlayableKind): Map<String, String> =
+            if (kind == PlayableKind.OKRU_720 || kind == PlayableKind.OKRU_360) {
+                mapOf("Referer" to "https://ok.ru/")
+            } else {
+                emptyMap()
+            }
+
+        /**
+         * Request GET iframe Blogger (v2.0.8 item 4) — fungsi MURNI
+         * supaya harness bisa memeriksa headernya tanpa OkHttp: UA
+         * browser + Referer Sanka, sama seperti fetchOkRuUrls
+         * (sebelumnya request polos tanpa header — tidak konsisten).
+         */
+        fun buildBloggerRequest(iframeUrl: String): Request =
+            Request.Builder().url(iframeUrl)
+                .header("User-Agent", OKRU_USER_AGENT)
+                .header("Referer", Constants.SANKA_BASE_URL)
+                .build()
     }
 
     /**
      * Ambil HTML iframe Blogger lalu ekstrak URL videoplayback.
-     * Gagal jaringan / bukan Blogger → peta kosong (fallback ke embed).
+     * Gagal jaringan / bukan Blogger → peta kosong.
      */
     private suspend fun fetchBloggerUrls(iframeUrl: String): Map<Int, String> {
         // L1: jangan GET ke host sembarang — hanya iframe Blogger.
         if (!isBlogger(iframeUrl)) return emptyMap()
         return withContext(Dispatchers.IO) {
-            val request = Request.Builder().url(iframeUrl).build()
+            // v2.0.8 item 4: UA + Referer via buildBloggerRequest (sama
+            // seperti fetchOkRuUrls) — request polos sebelumnya tidak
+            // konsisten.
+            val request = buildBloggerRequest(iframeUrl)
             bloggerClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext emptyMap<Int, String>()
                 val html = response.body?.string() ?: return@withContext emptyMap<Int, String>()
