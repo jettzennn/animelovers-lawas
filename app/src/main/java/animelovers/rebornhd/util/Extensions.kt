@@ -28,15 +28,36 @@ fun Context.toastLong(message: String) =
  * diketahui, pakai toast generik seperti dulu. Rate limit TIDAK lewat
  * sini (sudah ditangani terpisah dengan pesan khusus di tiap layar).
  * Pesan panjang → toastLong supaya sempat dibaca.
+ *
+ * F-4 Cari Bug v2.0.10: catch-all `sankaErrorReason` (file BEKU — jangan
+ * disentuh) bisa mengembalikan "y: tanpa pesan" (nama kelas 1 huruf
+ * pasca-R8 + pesan kosong) dan pesan mentah yang bisa berisi URL/token.
+ * Mitigasi di titik tampil (di sini): alasan disanitasi (host-only,
+ * tanpa URL/token utuh — pola yang sama dengan `DiagError.describe`),
+ * dan bila hasilnya tetap tak terbaca → toast generik.
  */
 fun Context.toastSankaError(e: Exception) {
     val reason = sankaErrorReason(e)
     if (reason != null) {
-        toastLong(getString(R.string.gagal_memuat_alasan, reason))
+        val safe = DiagSanitize.sanitize(reason)
+        if (UNREADABLE_REASON.matches(safe)) {
+            toast(getString(R.string.gagal_memuat))
+        } else {
+            toastLong(getString(R.string.gagal_memuat_alasan, safe))
+        }
     } else {
         toast(getString(R.string.gagal_memuat))
     }
 }
+
+/**
+ * Pola alasan yang tetap tak terbaca setelah sanitasi: nama kelas hasil
+ * rename R8 (1–2 huruf) + "tanpa pesan" (catch-all tanpa pesan).
+ * Alasan bertipe ("server menjawab 403", "Sanka: … — tanpa pesan", …)
+ * tidak cocok dengan pola ini — hanya catch-all yang tak terbaca yang
+ * jatuh ke toast generik.
+ */
+private val UNREADABLE_REASON = Regex("""^[A-Za-z$]{1,2}: tanpa pesan$""")
 
 /** True bila perangkat terhubung ke WiFi (untuk gerbang WiFi player). */
 fun Context.isOnWifi(): Boolean {

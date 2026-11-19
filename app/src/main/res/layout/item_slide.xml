@@ -26,5 +26,7 @@
         android:layout_alignBottom="@+id/slideImage"
         android:layout_centerHorizontal="true"
         android:textAlignment="center"
+        android:maxLines="3"
+        android:ellipsize="end"
         style="@style/AudioFileInfoOverlayText" />
 </RelativeLayout>

@@ -47,7 +47,9 @@ class DiagPosterListener(
     override fun onError(request: ImageRequest, result: ErrorResult) {
         val started = removeStarted(request)
         val ms = System.currentTimeMillis() - started
-        val reason = result.throwable.javaClass.simpleName
+        // v2.0.10 item 2: nama kelas hasil rename R8 (1 huruf) tidak
+        // boleh masuk log — pakai pesan yang bisa dibaca.
+        val reason = DiagError.describe(result.throwable)
         diagLogger?.warn(
             DiagLog.TAG_POSTER,
             "poster gagal ($reason) (${ms}ms) ${hostOf(request)}"

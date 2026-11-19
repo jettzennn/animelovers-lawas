@@ -8,13 +8,11 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.data.local.entity.FavoriteEntity
 import animelovers.rebornhd.data.local.entity.VideoEntity
 import animelovers.rebornhd.data.model.SankaAnime
-import animelovers.rebornhd.data.model.rewritePosterHost
 import animelovers.rebornhd.databinding.ItemEpisodeBinding
 import animelovers.rebornhd.databinding.ItemFavoritesHeaderBinding
 import animelovers.rebornhd.databinding.ItemHistoryBinding
 import animelovers.rebornhd.databinding.ItemHistoryDetailBinding
 import animelovers.rebornhd.util.formatWaktu
-import coil.load
 
 /** Sel grid episode (item_episode): chip putih "Episode {n}". */
 class EpisodeAdapter(
@@ -88,11 +86,13 @@ class HistoryAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val b = holder.binding
-        b.posterhistoryView.load(rewritePosterHost(item.idposter)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-            crossfade(true)
-        }
+        // v2.0.10 M-1: helper loadPoster yang sama (ikon error + ketuk
+        // untuk coba lagi). Ketuk saat sukses membuka Detail seperti
+        // barisnya (poster menelan ketukan baris — perilakunya sama).
+        loadPoster(
+            b.posterhistoryView, item.idposter,
+            widthDp = 105, heightDp = 135
+        ) { onClick(item) }
         b.titlehistoryView.text = item.title
         b.episodehistoryView.text =
             b.root.context.getString(R.string.episode_label, item.idepisode.toIntOrNull() ?: 0)
@@ -133,11 +133,11 @@ class HistoryDetailAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         val b = holder.binding
-        b.posterhistorydetView.load(rewritePosterHost(item.idposter)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-            crossfade(true)
-        }
+        // v2.0.10 M-1: lihat HistoryAdapter di atas.
+        loadPoster(
+            b.posterhistorydetView, item.idposter,
+            widthDp = 100, heightDp = 130
+        ) { onClick(item) }
         b.episodehistorydetView.text = item.idepisode
         b.timehistorydetView.text = formatWaktu(item.waktu)
     }

@@ -78,24 +78,180 @@ object DiagFormat {
  * Pesan tanpa `://` dikembalikan apa adanya (jalur cepat, tanpa regex).
  */
 object DiagSanitize {
-    private val urlPattern = Regex("https?://[^\\s\"'<>]+")
+    // Skema TIDAK peka huruf (L-3 Pentest v2.0.9: "HTTPS://…" lolos dulu).
+    private val urlPattern = Regex("https?://[^\\s\"'<>]+", RegexOption.IGNORE_CASE)
+
+    // Host telanjang + path (L-3: tanpa skema, mis. "host/path?sig=…").
+    // Dibatasi TLD yang dikenal supaya teks biasa ("v2.0.10", tanggal,
+    // "Ep 1180: gagal") tidak ikut tersapu.
+    private val bareHostPattern = Regex(
+        """\b(?:[a-z0-9\-]+\.)+(?:com|net|org|id|sbs|to|xyz|io|co|me|tv|cc|app|dev|site|online|fun|live|icu|vip|ink)/[^\s"'<>]*""",
+        RegexOption.IGNORE_CASE
+    )
 
     fun sanitize(text: String): String {
-        if ("://" !in text) return text
-        return urlPattern.replace(text) { match ->
-            val rawUrl = match.value
-            val trimmed = rawUrl.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')
-            val tail = rawUrl.substring(trimmed.length)
-            "host=" + hostOf(trimmed) + tail
+        var out = text
+        // Normalisasi escape JSON (\/ → /) SEBELUM dicocokkan (L-3:
+        // "https:\/\/host\/path" lolos dulu karena pola menuntut "://").
+        if ("\\/" in out) out = out.replace("\\/", "/")
+        if ("://" in out) {
+            out = urlPattern.replace(out) { match ->
+                val rawUrl = match.value
+                val trimmed = rawUrl.trimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')
+                val tail = rawUrl.substring(trimmed.length)
+                "host=" + hostOf(trimmed) + tail
+            }
         }
+        // Host telanjang: hanya host-nya yang dicatat, path/query dibuang.
+        out = bareHostPattern.replace(out) { match ->
+            "host=" + match.value.substringBefore('/').lowercase()
+        }
+        return out
     }
 
     private fun hostOf(url: String): String {
         return try {
-            URI(url).host ?: "?"
+            URI(url).host?.lowercase() ?: "?"
         } catch (e: Exception) {
             "?"
         }
+    }
+}
+
+/**
+ * Pesan error yang bisa dibaca manusia untuk baris log (v2.0.10 item 2).
+ *
+ * Masalah: `e.javaClass.simpleName` mengembalikan nama kelas hasil rename
+ * R8 (1 huruf, mis. "y"/"u") di APK Release — baris log jadi tidak bisa
+ * dibaca ("gagal (u)"). Formatter ini memakai PESAN exception (yang sudah
+ * disanitasi) sebagai sumber utama, dan hanya memakai nama kelas bila
+ * pesannya kosong DAN namanya bisa dibaca (bukan 1 huruf hasil rename).
+ */
+object DiagError {
+    /** Panjang maksimum pesan error di baris log (PRD v2.0.10 item 2). */
+    const val MAX_ERROR_MESSAGE_CHARS = 120
+
+    /** Pesan error singkat yang bisa dibaca — tanpa nama kelas 1 huruf. */
+    fun describe(e: Throwable?): String {
+        if (e == null) return "tidak diketahui"
+        val msg = DiagSanitize.sanitize(firstMessage(e).orEmpty())
+        if (msg.isNotBlank()) return msg.take(MAX_ERROR_MESSAGE_CHARS)
+        return readableKind(e) ?: "galat"
+    }
+
+    /** "Jenis: pesan" untuk header crash — jenis dihilangkan bila hasil
+     *  rename R8 (1 huruf). Bila pesan kosong, hanya jenisnya. */
+    fun describeWithKind(e: Throwable?): String {
+        if (e == null) return "tidak diketahui"
+        val kind = readableKind(e)
+        val msg = DiagSanitize.sanitize(firstMessage(e).orEmpty())
+            .take(MAX_ERROR_MESSAGE_CHARS)
+        return when {
+            kind != null && msg.isNotBlank() -> "$kind: $msg"
+            kind != null -> kind
+            msg.isNotBlank() -> msg
+            else -> "galat"
+        }
+    }
+
+    /** Nama kelas yang bisa dibaca — null bila hasil rename R8 (1 huruf
+     *  atau mengandung '$' dari kelas dalam yang di-rename). */
+    private fun readableKind(e: Throwable): String? {
+        val name = e.javaClass.name.substringAfterLast('.')
+        return if (name.length > 1 && '$' !in name) name else null
+    }
+
+    /** Pesan pertama yang tidak kosong di rantai cause (e → cause → …). */
+    private fun firstMessage(e: Throwable?): String? {
+        var cur = e
+        while (cur != null) {
+            val m = cur.message?.trim()
+            if (!m.isNullOrEmpty()) return m
+            cur = cur.cause
+        }
+        return null
+    }
+}
+
+/**
+ * Cermin tulis file log (v2.0.10 item 12 — perbaikan M-1 Cari Bug v2.0.9).
+ *
+ * Masalah lama: `log()` menghitung `dropped` (trim) di bawah `lock`, lalu
+ * tugas tulis async di executor memutuskan rewrite/append dari nilai itu.
+ * Bila trim terpicu dan baris berikut masuk SEBELUM tugas rewrite jalan,
+ * rewrite menulis snapshot yang SUDAH berisi baris berikut itu — lalu
+ * tugas baris berikut tetap meng-append baris yang sama → baris duplikat
+ * di file. `clear()` juga menghapus file secara async — force-stop dalam
+ * jendela milidetik setelah Hapus bisa menghidupkan kembali file lama.
+ *
+ * Perbaikan: tiap baris mendapat nomor urut (seq) saat masuk ring; tugas
+ * tulis memutuskan dari keadaan SAAT ITU (bukan nilai saat `log()`
+ * dipanggil): rewrite → tulis seluruh snapshot + catat seq terakhirnya;
+ * append → hanya bila seq baris ini belum tertulis (lewat rewrite
+ * sebelumnya). `clear()` menaikkan generasi (tugas tulis generasi lama
+ * jadi basi) + menghapus file secara SINKRON.
+ *
+ * Semua method @Synchronized — dipakai dari thread mana pun (UI,
+ * player, executor file) tanpa lock luar.
+ */
+class DiagFileMirror {
+    private var nextSeq = 0L
+    private var persistedThroughSeq = 0L
+    private var rewriteNeeded = false
+    private var generation = 0L
+
+    /** Baris lama yang sudah ada di file saat start (dibaca ulang ke ring). */
+    @Synchronized
+    fun seed(existingLines: Int) {
+        repeat(existingLines) { nextSeq++ }
+        persistedThroughSeq = nextSeq
+    }
+
+    /** Dipanggil tiap baris baru masuk ring — kembalikan nomor urutnya. */
+    @Synchronized
+    fun onLineAdded(dropped: Int): Long {
+        if (dropped > 0) rewriteNeeded = true
+        return ++nextSeq
+    }
+
+    /** Generasi tulis saat ini — naik tiap clear(). */
+    @Synchronized
+    fun generation(): Long = generation
+
+    /** Ambil + kosongkan flag rewrite (sekali per tugas tulis). */
+    @Synchronized
+    fun takeRewriteNeeded(): Boolean {
+        val r = rewriteNeeded
+        rewriteNeeded = false
+        return r
+    }
+
+    /** Nomor urut terakhir yang pernah diberikan. */
+    @Synchronized
+    fun lastAssignedSeq(): Long = nextSeq
+
+    /** Baris ini sudah tertulis (langsung / lewat rewrite) — jangan tulis ulang. */
+    @Synchronized
+    fun isPersisted(seq: Long): Boolean = seq <= persistedThroughSeq
+
+    /** Rewrite menulis ulang seluruh ring sampai [lastSeq] ini. */
+    @Synchronized
+    fun noteRewrote(lastSeq: Long) {
+        if (lastSeq > persistedThroughSeq) persistedThroughSeq = lastSeq
+    }
+
+    /** Append satu baris ini. */
+    @Synchronized
+    fun noteAppended(seq: Long) {
+        if (seq > persistedThroughSeq) persistedThroughSeq = seq
+    }
+
+    /** Kosongkan log — semua tugas tulis generasi lama jadi basi. */
+    @Synchronized
+    fun reset() {
+        rewriteNeeded = false
+        persistedThroughSeq = 0L
+        generation++
     }
 }
 

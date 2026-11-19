@@ -42,13 +42,16 @@ import animelovers.rebornhd.app
 import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.PlayableSource
 import animelovers.rebornhd.data.model.rewritePosterHost
+import animelovers.rebornhd.data.repo.CandidateTryOrder
 import animelovers.rebornhd.data.repo.EpisodeSources
 import animelovers.rebornhd.data.repo.HttpFailFast
 import animelovers.rebornhd.data.repo.PlayerRepository
+import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.data.repo.StallTracker
 import animelovers.rebornhd.databinding.ActivityVideoBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.isOnWifi
 import animelovers.rebornhd.util.toast
@@ -173,6 +176,14 @@ class VideoPlayActivity : BaseActivity() {
     private var sources: EpisodeSources? = null
     private var candidateIndex: Int = -1
     private var currentSource: PlayableSource? = null
+    /**
+     * Indeks kandidat yang SUDAH dicoba untuk episode ini (v2.0.10
+     * item 9) — dipakai [CandidateTryOrder.nextIndex] supaya kandidat
+     * #0 ikut dicoba (dulu tryNextCandidate hanya berjalan maju dari
+     * kandidat awal, jadi #0 tidak pernah dicoba bila awalnya #1).
+     * Dikosongkan tiap ganti episode (loadEpisode).
+     */
+    private val triedCandidateIndices = mutableSetOf<Int>()
     private var episodeNumbers: List<Int> = emptyList()
     private var episodeSlugs: Map<Int, String> = emptyMap()
 
@@ -224,8 +235,18 @@ class VideoPlayActivity : BaseActivity() {
     private var resumeSaved: Boolean = false
     private var wifiDialogShown: Boolean = false
 
-    /** Frame pertama sudah tampil (loading awal selesai). */
-    private var hasFirstFrame: Boolean = false
+    /**
+     * Pelacak frame pertama (F-1 Cari Bug v2.0.10 — dulu satu flag
+     * `firstFrameReached` yang bersemantik per-kandidat karena di-reset
+     * di `startMedia3()` juga):
+     * - per-kandidat → UI/timing frame pertama (`hideInitialLoading()`);
+     * - per-episode → guard `persistResume()` (item 10): riwayat/resume
+     *   HANYA ditulis bila episode ini SUDAH PERNAH mencapai frame
+     *   pertama — film/episode 0-kandidat yang langsung gagal TIDAK
+     *   BOLEH masuk Riwayat/"Lanjutkan" — tapi tetap ditulis bila sudah
+     *   (keluar saat buffering retry setelah menonton).
+     */
+    private val firstFrameTracker = FirstFrameTracker()
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -357,8 +378,8 @@ class VideoPlayActivity : BaseActivity() {
                         updateBufferingUi(false)
                         stopStallWatch()
                         updatePlayPauseButton()
-                        if (!hasFirstFrame) {
-                            hasFirstFrame = true
+                        if (!firstFrameTracker.hasReachedFirstFrame()) {
+                            firstFrameTracker.onFirstFrame()
                             hideInitialLoading()
                             // v2.0.9 item 3: frame pertama dicatat (durasi
                             // sejak kandidat mulai) — WARN bila > 10 dtk.
@@ -468,11 +489,13 @@ class VideoPlayActivity : BaseActivity() {
                 // (untuk transient) atau langsung (untuk 451/404/410).
                 // v2.0.9 item 3: error kandidat dicatat (tanpa URL — token
                 // stream sensitif; hanya jenis error + penyebabnya).
+                // v2.0.10 item 2: penyebab error pakai DiagError (nama
+                // kelas hasil rename R8 — 1 huruf — tidak boleh masuk log).
                 app().diagLogger.error(
                     DiagLog.TAG_PLAYER,
                     "Ep $episode: error kandidat ${source.kind} setelah " +
                         "${SystemClock.elapsedRealtime() - candidateStartedAtMs}ms " +
-                        "(${error.errorCodeName}, ${error.cause?.javaClass?.simpleName})"
+                        "(${error.errorCodeName}, ${DiagError.describe(error.cause)})"
                 )
                 stopStallWatch()
                 tryNextCandidate()
@@ -963,7 +986,10 @@ class VideoPlayActivity : BaseActivity() {
         sources = null
         currentSource = null
         candidateIndex = -1
-        hasFirstFrame = false
+        // v2.0.10 item 9: daftar "sudah dicoba" dikosongkan tiap episode.
+        triedCandidateIndices.clear()
+        // F-1: episode baru → kedua flag frame pertama reset.
+        firstFrameTracker.onEpisodeStart()
         showInitialLoading()
         updateNextPrevButtons()
         updateDownloadUi()
@@ -977,8 +1003,11 @@ class VideoPlayActivity : BaseActivity() {
                 val resolveMs = SystemClock.elapsedRealtime() - resolveStartedAtMs
                 app().diagLogger.info(
                     DiagLog.TAG_PLAYER,
+                    // v2.0.10 item 3: slug episode dicatat — tanpa ini,
+                    // resolve yang salah pilih slug (Episode 1 One Piece →
+                    // Spesial) tidak bisa dibedakan dari resolve yang benar.
                     "Ep $episode: resolve selesai ${resolveMs}ms, " +
-                        "${resolved.candidates.size} kandidat"
+                        "slug=$episodeSlug, ${resolved.candidates.size} kandidat"
                 )
                 if (resolveMs > DiagLog.SLOW_RESOLVE_MS) {
                     app().diagLogger.warn(
@@ -989,9 +1018,18 @@ class VideoPlayActivity : BaseActivity() {
                 sources = resolved
                 episodeNumbers = resolved.episodeList
                     .map { it.number }.filter { it > 0 }.distinct().sorted()
+                // v2.0.10 item 1: daftar episode Sanka bisa berisi DUA entri
+                // bernomor sama (entri "Episode Spesial" di depan, episode
+                // asli di belakang) — pilih slug per nomor lewat
+                // pickEpisodeSlug (pola episode asli didahulukan), BUKAN
+                // entri pertama mentah (itu yang membuat "Episode 1" One
+                // Piece memutar konten Wano/Spesial di v2.0.9).
                 episodeSlugs = resolved.episodeList
-                    .mapNotNull { item ->
-                        item.slug?.takeIf { it.isNotBlank() }?.let { item.number to it }
+                    .groupBy({ it.number }, { it.slug })
+                    .mapNotNull { (number, slugs) ->
+                        SankaRepository.pickEpisodeSlug(
+                            slugs.map { number to it }, number
+                        )?.takeIf { it.isNotBlank() }?.let { number to it }
                     }.toMap()
                 updateNextPrevButtons()
                 val startIndex = pickStartCandidate(resolved)
@@ -1013,9 +1051,10 @@ class VideoPlayActivity : BaseActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
                 app().diagLogger.error(
                     DiagLog.TAG_PLAYER,
-                    "Ep $episode: resolve gagal (${e.javaClass.simpleName})"
+                    "Ep $episode: resolve gagal (${DiagError.describe(e)})"
                 )
                 hideInitialLoading()
                 toast(getString(R.string.gagal_memutar, episode))
@@ -1050,6 +1089,9 @@ class VideoPlayActivity : BaseActivity() {
         val all = sources ?: return
         val source = all.candidates.getOrNull(index) ?: return
         candidateIndex = index
+        // v2.0.10 item 9: tandai sudah dicoba — tryNextCandidate hanya
+        // memilih indeks yang belum dicoba (penghentian terjamin).
+        triedCandidateIndices += index
         currentSource = source
         isHd = source.isHd
         candidateStartedAtMs = SystemClock.elapsedRealtime()
@@ -1075,11 +1117,18 @@ class VideoPlayActivity : BaseActivity() {
      * Samehadaku); bila tidak ada lapis tersisa → gagal jujur (toast +
      * keluar, seperti asli). TIDAK ADA LAGI dialog "Putar lewat
      * website?" (v2.0.8 item 5, D-web).
+     *
+     * v2.0.10 item 9: urutan coba lewat [CandidateTryOrder] — kandidat
+     * yang belum dicoba, MAJU dulu lalu MUNDUR ke #0 (dulu hanya maju
+     * dari kandidat awal: bila awalnya #1, #0 tidak pernah dicoba dan
+     * lapis malas mengambil ulang URL yang sama dari #0).
      */
     private fun tryNextCandidate() {
         val all = sources ?: return
-        val nextIndex = candidateIndex + 1
-        if (nextIndex < all.candidates.size) {
+        val nextIndex = CandidateTryOrder.nextIndex(
+            all.candidates.size, candidateIndex, triedCandidateIndices
+        )
+        if (nextIndex != null) {
             app().diagLogger.warn(
                 DiagLog.TAG_PLAYER,
                 "Ep $episode: kandidat #$candidateIndex (${currentSource?.kind}) " +
@@ -1223,7 +1272,9 @@ class VideoPlayActivity : BaseActivity() {
 
     private fun startMedia3(source: PlayableSource, restorePosition: Long) {
         val exoPlayer = player ?: return
-        hasFirstFrame = false
+        // F-1: kandidat baru → HANYA flag per-kandidat yang reset; flag
+        // per-episode TETAP (sudah menonton = tetap boleh ditulis).
+        firstFrameTracker.onCandidateStart()
         showInitialLoading()
         // v2.0.8 item 2: Referer per-kind (headersFor) — dipasang di
         // factory SEBELUM media item dipasang; playback strictly
@@ -1453,6 +1504,15 @@ class VideoPlayActivity : BaseActivity() {
     private fun persistResume() {
         // Hanya simpan bila episode sudah ter-resolve (pernah mulai diputar).
         if (sources == null) return
+        // v2.0.10 item 10: frame pertama episode ini BELUM tercapai =
+        // video tidak pernah jalan (film/episode 0-kandidat langsung
+        // gagal) — jangan tulis riwayat/resume. Dulu jalur ini menulis
+        // posisi 0 untuk film yang gagal, sehingga film gagal muncul di
+        // Riwayat + "Lanjutkan" (video v2.0.9: Tamako/Kimi no Na wa/
+        // Totoro). F-1: guard memakai flag PER-EPISODE — keluar saat
+        // buffering retry SETELAH menonton tetap menulis (flag itu tidak
+        // di-reset saat pindah kandidat).
+        if (!firstFrameTracker.hasEpisodeReachedFirstFrame()) return
         val exoPlayer = player ?: return
         val position = (exoPlayer.currentPosition - Constants.RESUME_REWIND_MS)
             .coerceAtLeast(0L)

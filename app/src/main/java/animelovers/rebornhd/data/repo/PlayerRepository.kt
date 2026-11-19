@@ -6,6 +6,7 @@ import animelovers.rebornhd.data.model.PlayableSource
 import animelovers.rebornhd.data.model.SankaEpisodeData
 import animelovers.rebornhd.data.model.SankaEpisodeListItem
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.DiagLogger
 import kotlinx.coroutines.CancellationException
@@ -49,6 +50,34 @@ data class EpisodeSources(
     val animeTitle: String = "",
     val okRuEmbedUrl: String? = null
 )
+
+/**
+ * Urutan coba kandidat berikutnya (v2.0.10 item 9) — fungsi MURNI.
+ *
+ * Masalah: `tryNextCandidate` lama hanya berjalan MAJU (`candidateIndex
+ * + 1`) — kandidat #0 TIDAK PERNAH dicoba bila `pickStartCandidate`
+ * memulai dari #1 (pilihan SD). Akibatnya video v2.0.9: BLOGGER_360 (#1)
+ * gagal → lapis malas mengambil ulang BLOGGER_720 yang sama dengan #0
+ * (+483 ms) — padahal #0 sudah ada di daftar.
+ *
+ * Aturan: indeks berikutnya yang BELUM dicoba — pertama yang lebih
+ * besar dari sekarang, bila tidak ada, yang paling kecil dari 0;
+ * null bila semua sudah dicoba. Pemanggil (VideoPlayActivity) menandai
+ * tiap indeks yang dimainkan di `triedCandidateIndices`, jadi
+ * penghentian TERJAMIN (hanya indeks yang belum dicoba yang dipilih).
+ */
+object CandidateTryOrder {
+    fun nextIndex(size: Int, currentIndex: Int, tried: Set<Int>): Int? {
+        if (size <= 0) return null
+        for (i in currentIndex + 1 until size) {
+            if (i !in tried) return i
+        }
+        for (i in 0 until size) {
+            if (i !in tried) return i
+        }
+        return null
+    }
+}
 
 /**
  * Keputusan tumbuh-vs-macet pengawas buffering (v2.0.8 item 1) —
@@ -209,20 +238,19 @@ class PlayerRepository(
             }
         }
 
-        // v2.0.9 item 4: hitungan per lapis — supaya Konsol menunjukkan
-        // lapis mana yang mengisi kandidat dan mana yang kosong.
-        val directCount = if (episode.sources.orEmpty().any { isPixeldrain(it.url) }) 1 else 0
-        val tokenCount = if (episode.mirrors.orEmpty().any {
-                it.type == "mp4" && isStreamToken(it.url)
-            }) 1 else 0
+        // v2.0.10 item 3 + 8: susun kandidat DULU, lalu catat dari daftar
+        // AKHIR (bukan dari URL mentah per lapis). Dulu baris ini menulis
+        // "4 kandidat" untuk ok.ru (4 URL tier mentah: hd/sd/full/…) padahal
+        // yang bisa diputar hanya 1 (hd/sd) — sementara "resolve selesai"
+        // di player menulis 1. Slug episode juga dicatat — dulu log resolve
+        // tidak pernah menyebut slug, sehingga "Episode 1" One Piece yang
+        // salah memutar Episode Spesial terlihat "sempurna" di log.
+        val sources = buildCandidates(episode, bloggerUrls, okRuUrls, samehadakuCandidates)
         diagLogger?.info(
             DiagLog.TAG_REPO,
-            "Ep ${episode.episodeNumber}: resolve → " +
-                "${directCount + tokenCount + bloggerUrls.size + okRuUrls.size + samehadakuCandidates.size} kandidat " +
-                "(direct $directCount/token $tokenCount/blogger ${bloggerUrls.size}/" +
-                "ok.ru ${okRuUrls.size}/samehadaku ${samehadakuCandidates.size})"
+            formatResolveLog(episode.episodeNumber, episodeSlug, sources.candidates)
         )
-        return buildCandidates(episode, bloggerUrls, okRuUrls, samehadakuCandidates)
+        return sources
     }
 
     /**
@@ -242,9 +270,10 @@ class PlayerRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
             diagLogger?.warn(
                 DiagLog.TAG_REPO,
-                "${epPrefix(episodeNumber)}Blogger lazy gagal (${e.javaClass.simpleName})"
+                "${epPrefix(episodeNumber)}Blogger lazy gagal (${DiagError.describe(e)})"
             )
             return emptyList()
         }
@@ -278,9 +307,10 @@ class PlayerRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
             diagLogger?.warn(
                 DiagLog.TAG_REPO,
-                "${epPrefix(episodeNumber)}ok.ru lazy gagal (${e.javaClass.simpleName})"
+                "${epPrefix(episodeNumber)}ok.ru lazy gagal (${DiagError.describe(e)})"
             )
             return emptyList()
         }
@@ -317,9 +347,10 @@ class PlayerRepository(
             // (launchLazyLayer) supaya jadi toast rate-limit + keluar.
             throw e
         } catch (e: Exception) {
+            // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
             diagLogger?.warn(
                 DiagLog.TAG_REPO,
-                "Ep $episodeNumber: Samehadaku lazy gagal (${e.javaClass.simpleName})"
+                "Ep $episodeNumber: Samehadaku lazy gagal (${DiagError.describe(e)})"
             )
             return emptyList()
         }
@@ -338,9 +369,10 @@ class PlayerRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
             diagLogger?.warn(
                 DiagLog.TAG_REPO,
-                "Ep $episodeNumber: Samehadaku lazy gagal (${e.javaClass.simpleName})"
+                "Ep $episodeNumber: Samehadaku lazy gagal (${DiagError.describe(e)})"
             )
             return emptyList()
         }
@@ -443,6 +475,39 @@ class PlayerRepository(
                 animeTitle = episode.animeTitle ?: "",
                 okRuEmbedUrl = okRuEmbedUrl(episode)
             )
+        }
+
+        /**
+         * Baris log resolve dari daftar kandidat AKHIR (v2.0.10 item 3) —
+         * fungsi MURNI: "Ep <n>: resolve slug=<slug> → <total> kandidat
+         * (direct x/token y/blogger z/ok.ru w/samehadaku v)". Hitungan
+         * per lapis diambil dari jenis kandidat (bukan dari jumlah URL
+         * mentah per lapis — itu yang dulu membuat "4 kandidat" ok.ru
+         * padahal yang bisa diputar hanya 1).
+         */
+        fun formatResolveLog(
+            episodeNumber: Int,
+            episodeSlug: String,
+            candidates: List<PlayableSource>
+        ): String {
+            var direct = 0
+            var token = 0
+            var blogger = 0
+            var okRu = 0
+            var samehadaku = 0
+            for (c in candidates) {
+                when (c.kind) {
+                    PlayableKind.DIRECT_720 -> direct++
+                    PlayableKind.TOKEN_720 -> token++
+                    PlayableKind.BLOGGER_720, PlayableKind.BLOGGER_360 -> blogger++
+                    PlayableKind.OKRU_720, PlayableKind.OKRU_360 -> okRu++
+                    PlayableKind.SAMEHADAKU_720, PlayableKind.SAMEHADAKU_360 -> samehadaku++
+                }
+            }
+            return "Ep $episodeNumber: resolve slug=$episodeSlug → " +
+                "${candidates.size} kandidat " +
+                "(direct $direct/token $token/blogger $blogger/" +
+                "ok.ru $okRu/samehadaku $samehadaku)"
         }
 
         /** URL embed ok.ru episode ini (sources[] / default_iframe). */

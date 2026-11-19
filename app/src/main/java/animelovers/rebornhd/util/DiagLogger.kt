@@ -50,6 +50,8 @@ class DiagLogger(context: Context) {
     private val lock = Any()
     private val fileLock = Any()
     private val ring = DiagRingBuffer()
+    /** Penjaga urutan tulis file (v2.0.10 item 12, M-1) — lihat DiagFileMirror. */
+    private val fileMirror = DiagFileMirror()
     private val fileScope = CoroutineScope(
         SupervisorJob() + Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     )
@@ -86,6 +88,9 @@ class DiagLogger(context: Context) {
             // File rusak / tidak bisa dibaca — mulai dari kosong; tulis
             // berikutnya menimpa file lama.
         }
+        // v2.0.10 item 12: baris lama yang sudah ada di file dianggap
+        // sudah tertulis (append berikut menempel di belakangnya).
+        fileMirror.seed(ring.size)
     }
 
     fun info(tag: String, message: String) = log('I', tag, message)
@@ -96,9 +101,15 @@ class DiagLogger(context: Context) {
         val line = DiagFormat.formatLine(
             System.currentTimeMillis(), level, tag, DiagSanitize.sanitize(message)
         )
-        val dropped: Int
+        // Nomor urut + generasi dicatat SEKARANG (di bawah lock, bersama
+        // penambahan ke ring) — keputusan rewrite/append dibuat NANTI di
+        // tugas tulis, dari keadaan ring saat itu (v2.0.10 item 12, M-1).
+        val seq: Long
+        val gen: Long
         synchronized(lock) {
-            dropped = ring.add(line)
+            val dropped = ring.add(line)
+            seq = fileMirror.onLineAdded(dropped)
+            gen = fileMirror.generation()
             _linesFlow.value = ring.snapshot()
         }
         when (level) {
@@ -109,12 +120,30 @@ class DiagLogger(context: Context) {
         fileScope.launch {
             synchronized(fileLock) {
                 try {
-                    if (dropped > 0 || logFile.length() > DiagLog.MAX_DIAG_FILE_BYTES) {
-                        rewriteFileLocked()
-                    } else {
+                    // Baris dari generasi lama (sebelum clear) — basi.
+                    if (gen != fileMirror.generation()) return@launch
+                    val needRewrite = fileMirror.takeRewriteNeeded()
+                    if (needRewrite || logFile.length() > DiagLog.MAX_DIAG_FILE_BYTES) {
+                        // Snapshot + seq terakhir diambil BERSAMA di bawah
+                        // lock — supaya tidak ada baris yang terlewat atau
+                        // tercatat dua kali.
+                        val snapshot: List<String>
+                        val lastSeq: Long
+                        synchronized(lock) {
+                            snapshot = ring.snapshot()
+                            lastSeq = fileMirror.lastAssignedSeq()
+                        }
+                        rewriteFileLocked(snapshot)
+                        fileMirror.noteRewrote(lastSeq)
+                    } else if (!fileMirror.isPersisted(seq)) {
+                        // Baris ini belum tertulis (tidak ikut rewrite
+                        // sebelumnya) — append seperti biasa.
                         logDir.mkdirs()
                         logFile.appendText(line + "\n")
+                        fileMirror.noteAppended(seq)
                     }
+                    // else: baris sudah tertulis lewat rewrite sebelumnya —
+                    // lewati (inilah yang dulu menduplikasi baris).
                 } catch (e: Exception) {
                     // Tulis log gagal diam-diam (best-effort) — jangan crash
                     // aplikasi hanya karena log tidak bisa ditulis.
@@ -124,8 +153,7 @@ class DiagLogger(context: Context) {
     }
 
     /** Tulis ulang file dari isi ring buffer (dipakai saat trim / file > 128 KB). */
-    private fun rewriteFileLocked() {
-        val lines = synchronized(lock) { ring.snapshot() }
+    private fun rewriteFileLocked(lines: List<String>) {
         try {
             logDir.mkdirs()
             logFile.writeText(
@@ -146,8 +174,7 @@ class DiagLogger(context: Context) {
             val now = System.currentTimeMillis()
             val header = DiagFormat.formatLine(
                 now, 'E', DiagLog.TAG_CRASH,
-                "CRASH $threadName ${throwable.javaClass.simpleName}: " +
-                    DiagSanitize.sanitize(throwable.message ?: "")
+                "CRASH $threadName ${DiagError.describeWithKind(throwable)}"
             )
             val frames = throwable.stackTrace.take(10).joinToString("\n") { frame ->
                 DiagFormat.formatLine(
@@ -178,15 +205,19 @@ class DiagLogger(context: Context) {
     fun clear() {
         synchronized(lock) {
             ring.clear()
+            // v2.0.10 item 12: naikkan generasi — tugas tulis lama jadi
+            // basi dan tidak akan menulis lagi ke file yang sudah bersih.
+            fileMirror.reset()
             _linesFlow.value = emptyList()
         }
-        fileScope.launch {
-            synchronized(fileLock) {
-                try {
-                    logFile.delete()
-                } catch (e: Exception) {
-                    // Best-effort — abaikan.
-                }
+        // Hapus file SECARA SINKRON (bukan async seperti dulu): file kecil,
+        // unlink cepat — dan force-stop tepat setelah Hapus tidak bisa
+        // lagi menghidupkan kembali file lama (M-1).
+        synchronized(fileLock) {
+            try {
+                logFile.delete()
+            } catch (e: Exception) {
+                // Best-effort — abaikan.
             }
         }
     }

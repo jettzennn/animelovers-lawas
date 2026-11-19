@@ -44,7 +44,16 @@ import java.util.Locale
  *   Detail — sama seperti ketuk kartu). Tag dibersihkan di tiap bind
  *   supaya View yang di-recycle tidak menyimpan aksi URL lama.
  */
-private fun loadPoster(
+/**
+ * Muat poster dengan placeholder + ikon error + ketuk-untuk-coba-lagi
+ * (v2.0.7 #1). `internal` (v2.0.10 M-1) supaya DetailActivity +
+ * HistoryAdapters memakai helper yang SAMA — dulu 6 situs di Detail +
+ * Riwayat masih memuat poster dengan error splashh langsung (tanpa ikon
+ * error + tanpa retry), sehingga poster gagal tampak seperti placeholder
+ * biasa dan tidak bisa dicoba ulang dengan ketuk.
+ * widthDp < 0 = lebar layar penuh (poster banner Detail).
+ */
+internal fun loadPoster(
     view: android.widget.ImageView,
     url: String,
     widthDp: Int = 100,

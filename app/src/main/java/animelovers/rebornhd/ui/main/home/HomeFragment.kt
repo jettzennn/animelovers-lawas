@@ -24,6 +24,7 @@ import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.episode.LainnyaActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.isOnline
 import animelovers.rebornhd.util.toast
@@ -81,15 +82,16 @@ class HomeFragment : Fragment() {
                 requireContext(), LinearLayoutManager.HORIZONTAL, false
             )
             adapter = updateAdapter
-            // v2.0.7 #9: nested scrolling WAJIB aktif — RecyclerView
-            // horizontal di dalam ViewPager2 (yang juga horizontal). Bila
-            // dimatikan, RecyclerView tidak pernah memanggil
-            // requestDisallowInterceptTouchEvent saat digeser, jadi ViewPager2
-            // mencegat gestur horizontal dan PINDAH TAB (ke Jelajahi).
-            // Dengan nested scrolling aktif, geser horizontal dipegang baris
-            // ini (kartu bergeser), geser vertikal tetap diteruskan ke
-            // ScrollView induk — perilaku normal keduanya.
-            isNestedScrollingEnabled = true
+            // v2.0.10 #4: nested scrolling MATI di kedua baris — v2.0.9
+            // item 9 sudah mematikan geser tab di tingkat ViewPager2
+            // (isUserInputEnabled = false), jadi alasan v2.0.7 #9
+            // (mencegah ViewPager2 mencegat gestur) sudah usang. Yang
+            // tersisa dari `true` justru biang patah-patah: RecyclerView
+            // horizontal di dalam ScrollView vertikal + SwipeRefreshLayout
+            // — fling horizontal yang sedikit miring dipotong di tengah
+            // jalan. Dengan `false`, baris memegang sendiri fling
+            // horizontalnya; gulir vertikal halaman tetap via ScrollView.
+            isNestedScrollingEnabled = false
         }
 
         mostViewAdapter = MostViewAdapter { openDetail(it) }
@@ -98,9 +100,8 @@ class HomeFragment : Fragment() {
                 requireContext(), LinearLayoutManager.HORIZONTAL, false
             )
             adapter = mostViewAdapter
-            // v2.0.7 #9: sama seperti recyclerViewUpdate di atas — tanpa
-            // ini, geser kartu Terlaris pindah tab ke Jelajahi.
-            isNestedScrollingEnabled = true
+            // v2.0.10 #4: sama seperti recyclerViewUpdate di atas.
+            isNestedScrollingEnabled = false
         }
 
         binding.lainnyaupdate.setOnClickListener {
@@ -233,9 +234,10 @@ class HomeFragment : Fragment() {
                 // ditelan jadi toast "Gagal memuat".
                 throw e
             } catch (e: Exception) {
+                // v2.0.10 item 2: tanpa simpleName (nama kelas 1 huruf R8).
                 diagLogger.error(
                     DiagLog.TAG_HOME,
-                    "Beranda gagal (${e.javaClass.simpleName})"
+                    "Beranda gagal (${DiagError.describe(e)})"
                 )
                 requireContext().toastSankaError(e)
             } finally {

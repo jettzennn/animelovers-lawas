@@ -164,25 +164,29 @@ class SankaRepository(
 
         /**
          * Sortir hasil pencarian client-side (v2.0.6 #3, diperkuat v2.0.7
-         * #13) — urutan server BUKAN relevansi (live "one piece": judul
-         * utama "One Piece" (TV) ada di posisi 19 dari 24, di atasnya 16
-         * Movie + 5 Special; live "nanatsu no taizai": Season 2 SEBELUM
-         * Season 1, Movie di atas — urutan server acak).
+         * #13, v2.0.10 #5) — urutan server BUKAN relevansi (live "one
+         * piece": judul utama "One Piece" (TV) ada di posisi 19 dari 24,
+         * di atasnya 16 Movie + 5 Special; live "nanatsu no taizai":
+         * Season 2 SEBELUM Season 1, Movie di atas — urutan server acak).
          * Aturan STABIL (urutan relatif di dalam tiap kelompok
          * dipertahankan — sortedWith Kotlin stabil):
-         *  1. judul persis sama dengan query (case-insensitive, trim);
-         *  2. entri awal seri: "Season 1" / judul dasar — lewat nomor
-         *     musim (seasonNumberFor): Season 1, lalu 2, 3, 4…;
+         *  1. judul persis sama dengan query (case-insensitive, trim) —
+         *     sufiks "[...]" di akhir judul DIABAIKAN (v2.0.10 #5:
+         *     "Tonari no Totoro [My Neighbor Totoro]" adalah judul persis
+         *     untuk query "tonari no totoro");
+         *  2. entri awal seri (tanpa nomor musim) dulu, lalu Season 1, 2,
+         *     3, 4… — lewat [seasonRankFor];
          *  3. type: TV dulu, lalu Special, ONA/OVA, Movie terakhir;
-         *  4. seri TV lanjutan/spinoff lain (tanpa nomor musim yang
-         *     dikenali) setelahnya, urutan server dipertahankan.
+         *  4. seri TV lanjutan/spinoff lain (judul tidak diawali query,
+         *     atau berawalan ":" — subjudul seri lain) setelahnya,
+         *     urutan server dipertahankan.
          * Fungsi MURNI (bisa diuji unit tanpa Android/jaringan).
          */
         fun sortSearchResults(query: String, list: List<SankaAnime>): List<SankaAnime> {
             val q = query.trim()
             return list.sortedWith(
                 compareBy<SankaAnime>(
-                    { if (it.displayTitle.trim().equals(q, ignoreCase = true)) 0 else 1 },
+                    { if (stripBracketSuffix(it.displayTitle).equals(q, ignoreCase = true)) 0 else 1 },
                     {
                         when (it.type?.trim()?.lowercase()) {
                             "movie" -> 4
@@ -191,35 +195,130 @@ class SankaRepository(
                             else -> 1 // "TV" + type kosong/tak dikenal
                         }
                     },
-                    { seasonNumberFor(q, it.displayTitle) ?: Int.MAX_VALUE }
+                    { seasonRankFor(q, it.displayTitle) }
                 )
             )
         }
 
         /**
-         * Nomor musim dari judul — HANYA bila sisa judul setelah query
-         * persis penanda musim ("Season 2", "2nd Season"). Contoh:
-         * query "nanatsu no taizai" + "Nanatsu no Taizai Season 2" → 2;
-         * "Nanatsu no Taizai: Mokushiroku no Yonkishi Season 2" → null
-         * (spinoff — ada subjudul sebelum "Season", jadi bukan Season 2
-         * seri utama); "Tokyo Ghoul √A Season 2" → null (ada "√A" di
-         * tengah). null = bukan seri bernomor → diurutkan setelah seri
-         * bernomor, urutan server dipertahankan.
+         * Buang sufiks "[...]" di akhir judul (v2.0.10 #5) — Sanka
+         * menambahkan nama Inggris dalam kurung siku ke banyak judul
+         * ("Tonari no Totoro [My Neighbor Totoro]") sehingga uji
+         * kesamaan persis selalu gagal. Hanya sufiks di AKHIR yang
+         * dibuang; "[...]" di tengah judul dibiarkan.
          */
-        private fun seasonNumberFor(query: String, title: String): Int? {
+        fun stripBracketSuffix(title: String): String =
+            title.trim().replace(Regex("""\s*\[[^\]]*\]\s*$"""), "").trim()
+
+        /**
+         * Peringkat musim dari judul (v2.0.10 #5 — menggantikan
+         * seasonNumberFor yang terlalu ketat):
+         * - Judul TIDAK diawali query → MAX (bukan seri ini — paling akhir).
+         * - Sisa judul diawali ":" / " - " (subjudul seri lain — mis.
+         *   "Nanatsu no Taizai: Mokushiroku no Yonkishi Season 2") →
+         *   MAX juga: musim itu milik seri ber-subjudul, bukan musim
+         *   seri utama — ia tetap diurutkan SETELAH Season 1–4 seri
+         *   utama (regresi v2.0.7 dipertahankan).
+         * - Selain itu, cari pola "Season N" / "Nth Season" DI MANA PUN
+         *   di sisa judul → nomor musim itu. Contoh: "Tantei wa Mou,
+         *   Shindeiru. Season 2" untuk query "tantei wa mou" → 2 (dulu
+         *   null karena ada ", Shindeiru." di tengah — S2 jadi terurut
+         *   di atas S1).
+         * - Diawali query + TANPA pola musim → 0 (judul dasar / awal
+         *   seri — di atas Season 2, 3, …). Contoh: "Tantei wa Mou,
+         *   Shindeiru." untuk query "tantei wa mou" → 0.
+         */
+        fun seasonRankFor(query: String, title: String): Int {
             val q = query.trim().lowercase()
-            if (q.isEmpty()) return null
+            if (q.isEmpty()) return Int.MAX_VALUE
             val t = title.trim()
-            if (!t.lowercase().startsWith(q)) return null
+            if (!t.lowercase().startsWith(q)) return Int.MAX_VALUE
             val rest = t.substring(q.length).trim()
-            Regex("""^Season\s+(\d+)$""", RegexOption.IGNORE_CASE).find(rest)?.let {
-                return it.groupValues[1].toIntOrNull()
+            // Subjudul seri lain (":" / " - ") — musim di dalamnya bukan
+            // musim seri utama (mis. "…: Mokushiroku no Yonkishi Season 2").
+            // F-5: `rest` sudah di-trim, jadi pola " - " (dengan spasi
+            // depan) TIDAK PERNAH cocok — uji "-" tanpa spasi depan.
+            if (rest.startsWith(":") || rest.startsWith("-")) return Int.MAX_VALUE
+            Regex("""Season\s+(\d+)""", RegexOption.IGNORE_CASE).find(rest)?.let {
+                return it.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE
             }
-            Regex("""^(\d+)(st|nd|rd|th)\s+Season$""", RegexOption.IGNORE_CASE)
+            Regex("""(\d+)(st|nd|rd|th)\s+Season""", RegexOption.IGNORE_CASE)
                 .find(rest)?.let {
-                    return it.groupValues[1].toIntOrNull()
+                    return it.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE
                 }
-            return null
+            return 0
+        }
+
+        /**
+         * Pilih slug episode bernomor [episode] dari daftar (nomor, slug)
+         * (v2.0.10 #1 — bug "Episode 1" One Piece memutar Episode
+         * Spesial/Wano).
+         *
+         * Akar: daftar episode Sanka bisa berisi DUA entri bernomor sama —
+         * entri "Episode Spesial"/batch diletakkan PALING DEPAN (paling
+         * baru) sementara episode asli ada di belakangnya. Grid hanya
+         * menampilkan nomor sekali (distinct), tapi lookup lama memakai
+         * `firstOrNull { it.number == episode }` di daftar MENTAH → kena
+         * yang spesial.
+         *
+         * Aturan pilih (berlaku umum):
+         *  1. slug berpola episode asli (`episode-<n>-` / `episode-<n>`
+         *     di akhir slug) — mis. "…episode-1-sub-indo";
+         *  2. bila tidak ada, entri pertama yang BUKAN spesial/batch;
+         *  3. bila semuanya spesial/batch, entri pertama (jangan gagal
+         *     total — lebih baik memutar sesuatu daripada toast).
+         * Pola dijangkar tanda "-" / akhir slug supaya nomor 1 tidak
+         * salah cocok dengan "episode-11"/"episode-12". Fungsi MURNI.
+         */
+        fun pickEpisodeSlug(numberedSlugs: List<Pair<Int, String?>>, episode: Int): String? {
+            // F-2 Cari Bug v2.0.10: entri blank/null dilewati SEBELUM
+            // memilih — dulu entri blank pertama "menang" aturan 2/3 lalu
+            // `.takeIf { isNotBlank() }` → null, dan slug valid di
+            // belakangnya tidak pernah tercapai.
+            val matches = numberedSlugs.filter { it.first == episode }
+                .mapNotNull { (_, slug) -> slug?.takeIf { it.isNotBlank() } }
+            if (matches.isEmpty()) return null
+            matches.firstOrNull { slug -> isRealEpisodeSlug(slug, episode) }
+                ?.let { return it }
+            matches.firstOrNull { slug -> !isSpecialOrBatchSlug(slug) }
+                ?.let { return it }
+            return matches.firstOrNull()
+        }
+
+        private fun isRealEpisodeSlug(slug: String?, episode: Int): Boolean {
+            if (slug.isNullOrBlank()) return false
+            // Slug spesial/batch BUKAN episode asli — walau mengandung
+            // pola "episode-<n>-" (mis. "…episode-1-batch-sub-indo").
+            if (isSpecialOrBatchSlug(slug)) return false
+            val s = slug.lowercase()
+            return s.contains("episode-$episode-") || s.endsWith("episode-$episode")
+        }
+
+        private fun isSpecialOrBatchSlug(slug: String?): Boolean {
+            val s = (slug ?: "").lowercase()
+            return "spesial" in s || "special" in s || "batch" in s
+        }
+
+        /**
+         * Label endpoint search untuk baris log (v2.0.10 #6) — query
+         * dipangkas ke 40 karakter (batas PRD v2.0.9) supaya query yang
+         * gagal tercatat TANPA menulis query utuh bila panjang.
+         */
+        fun searchEndpointLabel(query: String): String =
+            "search:${query.trim().take(40)}"
+
+        /**
+         * Kunci cache untuk LOG (L-4 Pentest v2.0.9) — query pencarian
+         * dipangkas ke 40 karakter di baris log. Kunci cache ASLI (penuh)
+         * tetap dipakai untuk identitas cache; yang dipangkas hanya
+         * tampilannya di log (bentuk kunci: "search:<query>:<page>" —
+         * query bisa mengandung ':', jadi page diambil dari belakang).
+         */
+        fun logKeyForCache(key: String): String {
+            if (!key.startsWith("search:")) return key
+            val page = key.substringAfterLast(':')
+            val query = key.removePrefix("search:").substringBeforeLast(':')
+            return "search:${query.take(40)}:$page"
         }
     }
 
@@ -257,17 +356,20 @@ class SankaRepository(
             val entry = cache[key]
             if (entry != null && System.currentTimeMillis() - entry.atMs < ttlMs) {
                 // v2.0.9 item 4: hit cache memori — tanpa jaringan, tanpa ms.
-                diagLogger?.info(DiagLog.TAG_REPO, "$key: cache memori")
+                // L-4 Pentest v2.0.9: kunci yang ditulis ke log dipangkas
+                // (query search maks 40 karakter) — kunci cache ASLI tetap
+                // penuh (identitas cache tidak berubah).
+                diagLogger?.info(DiagLog.TAG_REPO, "${logKeyForCache(key)}: cache memori")
                 @Suppress("UNCHECKED_CAST")
                 return entry.value as T
             }
             val t0 = System.currentTimeMillis()
             val result = block()
             val ms = System.currentTimeMillis() - t0
-            diagLogger?.info(DiagLog.TAG_REPO, "$key: jaringan ${ms}ms")
+            diagLogger?.info(DiagLog.TAG_REPO, "${logKeyForCache(key)}: jaringan ${ms}ms")
             val slowMs = if (key == "home") DiagLog.SLOW_HOME_MS else DiagLog.SLOW_SEARCH_MS
             if (ms > slowMs) {
-                diagLogger?.warn(DiagLog.TAG_REPO, "$key: lambat (${ms}ms)")
+                diagLogger?.warn(DiagLog.TAG_REPO, "${logKeyForCache(key)}: lambat (${ms}ms)")
             }
             cache[key] = CacheEntry(System.currentTimeMillis(), result)
             return result
@@ -435,16 +537,6 @@ class SankaRepository(
     }
 
     /**
-     * Isi cache `home` MEMORI bila masih segar (TTL_HOME_MS) — TANPA
-     * jaringan, tanpa menyentuh throttle, tanpa baca disk.
-     */
-    fun homeMemoryCached(): SankaHome? {
-        val entry = cache["home"] ?: return null
-        if (System.currentTimeMillis() - entry.atMs >= TTL_HOME_MS) return null
-        return entry.value as? SankaHome
-    }
-
-    /**
      * Isi cache `home` DISK bila masih segar (TTL_HOME_MS dari
      * lastModified file) — baca + parse JSON di Dispatchers.IO (v2.0.7
      * #3). null = file tidak ada / basi / rusak (file rusak dihapus
@@ -489,11 +581,26 @@ class SankaRepository(
      * Tulis JSON mentah /home ke disk (v2.0.7 #3) — best-effort: gagal
      * tulis (penyimpanan penuh, dsb.) hanya di-Log.w, TIDAK menggagalkan
      * fetch yang sudah berhasil.
+     *
+     * v2.0.10 M-3 (Cari Bug v2.0.7): tulis ATOMIK — tulis dulu ke file
+     * sementara di folder yang sama, lalu `renameTo` ke nama akhir.
+     * Rename dalam satu filesystem bersifat atomik, jadi pembaca TIDAK
+     * PERNAH melihat file setengah tertulis (dulu: `writeText` langsung
+     * ke file akhir — crash tepat di tengah tulis merusak cache).
+     * Bila rename gagal, file sementara dihapus dan cache lama tetap
+     * dipakai (perilaku best-effort dipertahankan).
      */
     private suspend fun writeHomeToDisk(raw: String) {
         val file = homeDiskFile ?: return
         try {
-            withContext(Dispatchers.IO) { file.writeText(raw) }
+            withContext(Dispatchers.IO) {
+                val tmp = java.io.File(file.parentFile, "${file.name}.tmp")
+                tmp.writeText(raw)
+                if (!tmp.renameTo(file)) {
+                    tmp.delete()
+                    Log.w(TAG, "Gagal memindahkan cache disk home — diabaikan")
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -514,7 +621,11 @@ class SankaRepository(
     suspend fun search(query: String, page: Int = 1): List<SankaAnime> =
         cached("search:$query:$page", TTL_SEARCH_MS) {
             val envelope = callWithRetry(
-                "search",
+                // v2.0.10 #6: endpoint membawa query (maks 40 karakter) —
+                // bila search gagal, baris log langsung menunjukkan query
+                // apa yang gagal (video v2.0.9: "one piece" gagal sekali
+                // tanpa jejak query).
+                searchEndpointLabel(query),
                 { transport.getJson("anime/animekompi/search?q=${encodeSegment(query)}&page=$page") },
                 { raw -> parseEnvelopeList(raw, SankaAnime::class.java) }
             )

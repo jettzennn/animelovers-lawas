@@ -9,6 +9,7 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.app
 import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.SankaDetail
+import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.databinding.ActivityEpisodeBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
@@ -116,9 +117,14 @@ class EpisodeActivity : BaseActivity() {
 
     private fun openPlayer(episode: Int) {
         // Slug episode ASLI dari respons detail — jangan dirangkai sendiri.
-        val episodeSlug = detail?.episodes.orEmpty()
-            .firstOrNull { it.number == episode }?.slug
-            ?.takeIf { it.isNotBlank() }
+        // v2.0.10 item 1: daftar episode bisa berisi DUA entri bernomor
+        // sama (entri "Episode Spesial" di depan, episode asli di
+        // belakang) — pilih lewat pickEpisodeSlug, BUKAN entri pertama
+        // mentah (itu yang membuat "Episode 1" One Piece memutar konten
+        // Wano/Spesial di v2.0.9).
+        val episodeSlug = SankaRepository.pickEpisodeSlug(
+            detail?.episodes.orEmpty().map { it.number to it.slug }, episode
+        )
         if (episodeSlug == null) {
             toast(getString(R.string.gagal_memutar, episode))
             return

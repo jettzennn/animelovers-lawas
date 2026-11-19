@@ -14,18 +14,18 @@ import animelovers.rebornhd.R
 import animelovers.rebornhd.app
 import animelovers.rebornhd.data.api.RateLimitException
 import animelovers.rebornhd.data.model.SankaDetail
-import animelovers.rebornhd.data.model.rewritePosterHost
+import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.databinding.ActivityDetailBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.adapter.HistoryDetailAdapter
+import animelovers.rebornhd.ui.adapter.loadPoster
 import animelovers.rebornhd.ui.episode.EpisodeActivity
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.ui.settings.SettingActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
-import coil.load
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -54,10 +54,19 @@ class DetailActivity : BaseActivity() {
     private var animeTitle: String = ""
     private var animePoster: String = ""
     private var detail: SankaDetail? = null
+    /**
+     * Episode yang diketuk di kartu "Lanjutkan" SEBELUM /detail kembali
+     * (v2.0.10 M-4) — diputar begitu applyData tiba (lihat openPlayer).
+     */
+    private var pendingEpisode: Int? = null
+    // F-3 Cari Bug v2.0.10: guard muat-ganda — ketuk ganda "Coba lagi" /
+    // "Lanjutkan" tidak memanggil load() dua kali (buang anggaran throttle).
+    private var isLoading: Boolean = false
     private var isFavorite: Boolean = false
     private var genres: List<String> = emptyList()
 
     companion object {
+        private const val KEY_PENDING_EPISODE = "pending_episode"
         fun start(context: Context, animeSlug: String, title: String, poster: String) {
             val intent = Intent(context, DetailActivity::class.java).apply {
                 putExtra(Constants.EXTRA_ID_TITLE, animeSlug)
@@ -77,16 +86,21 @@ class DetailActivity : BaseActivity() {
         animeTitle = intent.getStringExtra(Constants.EXTRA_TITLE).orEmpty()
         animePoster = intent.getStringExtra(Constants.EXTRA_POSTER).orEmpty()
 
+        // F-3: pendingEpisode bertahan lewat rotasi (field biasa hilang
+        // saat Activity dibuat ulang) — dipulihkan di sini, dikonsumsi
+        // applyData begitu /detail kembali seperti biasa.
+        pendingEpisode = savedInstanceState?.getInt(KEY_PENDING_EPISODE, -1)
+            ?.takeIf { it > 0 }
+
         // Placeholder langsung dari extras selagi /detail dimuat.
+        // v2.0.10 M-1: pakai helper loadPoster yang sama dengan Beranda —
+        // poster gagal menampilkan ikon error + bisa dicoba ulang dengan
+        // ketuk (dulu error(R.drawable.splashh): tampak seperti
+        // placeholder biasa, tanpa retry). Ketuk saat sukses tidak
+        // melakukan apa-apa (onPosterClick = {}).
         binding.textViewTitled.text = animeTitle
-        binding.posterDetailView.load(rewritePosterHost(animePoster)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-        }
-        binding.imageDetThumbView.load(rewritePosterHost(animePoster)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-        }
+        loadPoster(binding.posterDetailView, animePoster, widthDp = -1, heightDp = 350) {}
+        loadPoster(binding.imageDetThumbView, animePoster, widthDp = 100, heightDp = 130) {}
         binding.shimmerViewContainer.startShimmer() // showShimmer() penuh di load().
 
         episodeAdapter = EpisodeAdapter { episode ->
@@ -129,6 +143,12 @@ class DetailActivity : BaseActivity() {
         binding.unlockimg.setOnClickListener { openSettings() }
 
         load()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // F-3: simpan pendingEpisode supaya rotasi tidak menghilangkannya.
+        pendingEpisode?.let { outState.putInt(KEY_PENDING_EPISODE, it) }
     }
 
     override fun onResume() {
@@ -184,6 +204,8 @@ class DetailActivity : BaseActivity() {
     }
 
     private fun load() {
+        if (isLoading) return
+        isLoading = true
         hideError()
         if (detail == null) showShimmer()
         lifecycleScope.launch {
@@ -192,14 +214,22 @@ class DetailActivity : BaseActivity() {
                 detail = data
                 applyData(data)
             } catch (e: RateLimitException) {
+                // F-3: load gagal → pendingEpisode basi, bersihkan supaya
+                // "Coba lagi" berikutnya tidak memutar episode yang sudah
+                // tidak diinginkan. (CancellationException dikecualikan:
+                // pemanggil membatalkan, bukan gagal.)
+                pendingEpisode = null
                 toast(getString(R.string.terlalu_banyak_permintaan))
                 if (detail == null) showError()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // F-3: sama — pendingEpisode basi dibersihkan saat gagal.
+                pendingEpisode = null
                 toastSankaError(e)
                 if (detail == null) showError()
             } finally {
+                isLoading = false
                 hideShimmer()
                 binding.swipeContainerDet.isRefreshing = false
             }
@@ -213,14 +243,9 @@ class DetailActivity : BaseActivity() {
         animePoster = data.posterUrl
         genres = data.genreSlugs
 
-        binding.posterDetailView.load(rewritePosterHost(animePoster)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-        }
-        binding.imageDetThumbView.load(rewritePosterHost(animePoster)) {
-            placeholder(R.drawable.splashh)
-            error(R.drawable.splashh)
-        }
+        // v2.0.10 M-1: lihat onCreate — helper yang sama (ikon error + retry).
+        loadPoster(binding.posterDetailView, animePoster, widthDp = -1, heightDp = 350) {}
+        loadPoster(binding.imageDetThumbView, animePoster, widthDp = 100, heightDp = 130) {}
         binding.textViewTitled.text = animeTitle
         // Baris status disembunyikan bila status + rating sama-sama kosong
         // — kalau tidak, tampil label kosong "Status :   Rating : ".
@@ -259,6 +284,13 @@ class DetailActivity : BaseActivity() {
             if (episodes.size > Constants.DETAIL_EPISODE_CAP) View.VISIBLE else View.GONE
 
         applyLock(showToast = true)
+
+        // v2.0.10 M-4: ketukan "Lanjutkan" yang ditahan selagi detail
+        // dimuat — putar sekarang (detail sudah ada).
+        pendingEpisode?.let { ep ->
+            pendingEpisode = null
+            openPlayer(ep)
+        }
     }
 
     /** Overlay kunci + toast penjelasan (sekali saat data dimuat). */
@@ -288,17 +320,35 @@ class DetailActivity : BaseActivity() {
             toast(getString(R.string.ecchi_perlu_login))
             return
         }
+        val d = detail
+        // v2.0.10 M-4: kartu "Lanjutkan" (riwayat lokal, diisi
+        // refreshHistory dari DB di onResume) bisa diketuk SEBELUM
+        // /detail kembali — saat itu `detail` masih null dan openPlayer
+        // lama langsung toast "gagal memutar". Kini ketukan DITAHAN:
+        // simpan nomornya, muat ulang detail, dan putar begitu applyData
+        // tiba (toast memberitahu pengguna untuk menunggu sebentar).
+        if (d == null) {
+            pendingEpisode = episode
+            load()
+            toast(getString(R.string.detail_memuat))
+            return
+        }
         // Slug episode ASLI dari respons detail — jangan dirangkai sendiri.
-        val episodeSlug = detail?.episodes.orEmpty()
-            .firstOrNull { it.number == episode }?.slug
-            ?.takeIf { it.isNotBlank() }
+        // v2.0.10 item 1: daftar episode bisa berisi DUA entri bernomor
+        // sama (entri "Episode Spesial" di depan, episode asli di
+        // belakang) — pilih lewat pickEpisodeSlug, BUKAN entri pertama
+        // mentah (itu yang membuat "Episode 1" One Piece memutar konten
+        // Wano/Spesial di v2.0.9).
+        val episodeSlug = SankaRepository.pickEpisodeSlug(
+            d.episodes.orEmpty().map { it.number to it.slug }, episode
+        )
         if (episodeSlug == null) {
             toast(getString(R.string.gagal_memutar, episode))
             return
         }
         VideoPlayActivity.start(
             this, animeSlug, animeTitle, animePoster, episode, episodeSlug,
-            isMovie = detail?.type == "Movie"
+            isMovie = d.type == "Movie"
         )
     }
 

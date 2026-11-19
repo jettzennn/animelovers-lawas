@@ -198,6 +198,81 @@ for layout in sorted(defined["layout"] - used_layouts):
 
 # ---------- 7. Kotlin: keseimbangan kurung (string/komentar dibuang) ----------
 
+def _template_end(body: str, i: int) -> int | None:
+    """Indeks '}' penutup template `${...}` yang mulai di `body[i] == '$'`
+    (dengan `body[i+1] == '{'`); None bila tidak tertutup. String di dalam
+    interpolasi dilewati — kutip di dalamnya bukan penutup string luar
+    (mis. `"${e.message ?: "tanpa pesan"}"` di SankaWebTransport.kt:134 —
+    pemindai string yang naif berhenti di kutip dalam dan merusak hitungan
+    kurung §7)."""
+    depth = 0
+    j = i + 1
+    n = len(body)
+    while j < n:
+        if body[j] == '"':
+            j += 1
+            while j < n and body[j] != '"' and body[j] != "\n":
+                if body[j] == "\\":
+                    j += 2
+                    continue
+                j += 1
+            if j < n and body[j] == '"':
+                j += 1
+            continue
+        if body[j] == "{":
+            depth += 1
+        elif body[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+        j += 1
+    return None
+
+
+def _keep_template_code(body: str) -> str:
+    """Pertahankan isi interpolasi `${...}` / `$nama` di dalam sebuah
+    string Kotlin; samarkan sisa teks literal dengan spasi (newline
+    dipertahankan supaya nomor baris tidak bergeser).
+
+    Isi template adalah KODE HIDUP yang dievaluasi saat runtime — kata
+    seperti `raw` / `simpleName` di dalamnya harus tetap terlihat oleh
+    gerbang (F-6 Cari Bug v2.0.10: `"raw=${raw.take(50)}"` lolos §20e
+    L-1 karena strip lama membuang seluruh isi string beserta
+    interpolasinya). Teks literal di sekitarnya tetap dibuang — hanya
+    interpolasi yang dihitung sebagai kode.
+    """
+    out: list[str] = []
+    i, n = 0, len(body)
+    while i < n:
+        ch = body[i]
+        if ch == "\\" and i + 1 < n:
+            # Escape (mis. \" atau \$) — bukan awal template.
+            out.append("  ")
+            i += 2
+            continue
+        if ch == "$" and i + 1 < n and body[i + 1] == "{":
+            close = _template_end(body, i)
+            if close is None:
+                out.append(body[i + 2:])
+                i = n
+            else:
+                out.append(body[i + 2:close])
+                i = close + 1
+            continue
+        if ch == "$" and i + 1 < n and (
+            body[i + 1].isalpha() or body[i + 1] == "_"
+        ):
+            j = i + 1
+            while j < n and (body[j].isalnum() or body[j] == "_"):
+                j += 1
+            out.append(body[i + 1:j])
+            i = j
+            continue
+        out.append("\n" if ch == "\n" else " ")
+        i += 1
+    return "".join(out)
+
+
 def strip_kotlin(text: str) -> str:
     """Buang string/komentar/char literal Kotlin untuk cek §7/§10/§11.
 
@@ -234,21 +309,29 @@ def strip_kotlin(text: str) -> str:
             j = text.find('"""', i + 3)
             if j < 0:
                 break
-            out.append('""')
+            out.append('"' + _keep_template_code(text[i + 3:j]) + '"')
             i = j + 3
             continue
         if text[i] == '"':
-            i += 1
-            while i < n:
-                if text[i] == "\\":
-                    i += 2
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
                     continue
-                if text[i] == '"' or text[i] == "\n":
+                if text[j] == "$" and j + 1 < n and text[j + 1] == "{":
+                    # Template ${...}: lewati sampai '}' yang cocok —
+                    # string di dalamnya bukan penutup string luar (F-6).
+                    close = _template_end(text, j)
+                    j = n if close is None else close + 1
+                    continue
+                if text[j] == '"' or text[j] == "\n":
                     break
-                i += 1
-            if i < n and text[i] == '"':
-                i += 1
-            out.append('""')
+                j += 1
+            body = text[i + 1:j]
+            if j < n and text[j] == '"':
+                j += 1
+            out.append('"' + _keep_template_code(body) + '"')
+            i = j
             continue
         if text[i] == "'":
             i += 1
@@ -483,7 +566,7 @@ if "shimmerViewContainer.visibility = View.GONE" not in _detail_kt:
     )
 
 # 13d. Throttle Sanka TIDAK BOLEH berubah (3 pelanggaran = BAN PERMANEN)
-#      + delay Splash 0 (D2) + versi rilis 2.0.9 / versionCode 14.
+#      + delay Splash 0 (D2) + versi rilis 2.0.10 / versionCode 15.
 _constants = (
     JAVA / "animelovers" / "rebornhd" / "util" / "Constants.kt"
 ).read_text(encoding="utf-8")
@@ -498,10 +581,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9")
-if '"2.0.9"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.9"')
+if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10")
+if '"2.0.10"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.10"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -790,12 +873,15 @@ if "rewritePosterHost(url)" not in _adapters_kt:
 _history_kt = (
     JAVA / "animelovers" / "rebornhd" / "ui" / "adapter" / "HistoryAdapters.kt"
 ).read_text(encoding="utf-8")
-if "rewritePosterHost(item.idposter)" not in _history_kt:
+# v2.0.10 M-1: pemakaian loadPoster MEMENUHI gerbang ini — helper itu
+# menulis ulang URL di dalamnya (rewritePosterHost(url), dicek di atas),
+# jadi situs pemanggil tidak lagi memanggil rewritePosterHost langsung.
+if "rewritePosterHost(item.idposter)" not in _history_kt and "loadPoster(" not in _history_kt:
     errors.append(
         "HistoryAdapters.kt: poster riwayat (baris lama di DB bisa v10) "
         "wajib ditulis ulang saat dimuat (v2.0.7 #1)"
     )
-if "rewritePosterHost(animePoster)" not in _detail_kt:
+if "rewritePosterHost(animePoster)" not in _detail_kt and "loadPoster(" not in _detail_kt:
     errors.append(
         "DetailActivity.kt: poster Detail wajib ditulis ulang "
         "(v2.0.7 #1)"
@@ -1037,17 +1123,23 @@ if "TypeToken" not in _proguard or "Signature" not in _proguard:
     )
 
 # 17l. Geser horizontal kartu Episode Baru/Terlaris menggeser baris,
-#      bukan pindah tab (v2.0.7 #9): nested scrolling AKTIF di kedua baris.
-if _home_kt.count("isNestedScrollingEnabled = true") < 2:
+#      bukan pindah tab — DITULIS ULANG di v2.0.10 #4: nested scrolling
+#      MATI di kedua baris. Alasan v2.0.7 #9 (mencegah ViewPager2
+#      mencegat gestur) sudah usang sejak v2.0.9 #9 mematikan geser tab
+#      di tingkat ViewPager2 — dan `= true` terbukti (video v2.0.9)
+#      biang patah-patah: fling horizontal yang sedikit miring dipotong
+#      di tengah jalan oleh ScrollView + SwipeRefreshLayout. Gerbang baru
+#      ada di §21d (re-assert di sini supaya §17 tetap hijau).
+if strip_kotlin(_home_kt).count("isNestedScrollingEnabled = true") != 0:
+    errors.append(
+        "HomeFragment.kt: isNestedScrollingEnabled = true dilarang — "
+        "biang patah-patah baris Beranda (v2.0.10 #4, menggantikan "
+        "v2.0.7 #9)"
+    )
+if strip_kotlin(_home_kt).count("isNestedScrollingEnabled = false") < 2:
     errors.append(
         "HomeFragment.kt: kedua RecyclerView horizontal (Episode Baru + "
-        "Terlaris) wajib isNestedScrollingEnabled = true (v2.0.7 #9)"
-    )
-if "isNestedScrollingEnabled = false" in _home_kt:
-    errors.append(
-        "HomeFragment.kt: isNestedScrollingEnabled = false dilarang di "
-        "baris horizontal — ViewPager2 akan mencegat geser dan pindah tab "
-        "(v2.0.7 #9)"
+        "Terlaris) wajib isNestedScrollingEnabled = false (v2.0.10 #4)"
     )
 
 # 17m. Tidak ada judul ber-genre Donghua tampil di Beranda/Jelajahi/
@@ -1330,7 +1422,7 @@ if "Video tidak tersedia" in _res_text:
     )
 
 # 18o. Batasan keras TIDAK BOLEH berubah (re-assert §13d/§16f/§17k) +
-#      versi 14 / "2.0.9" (v2.0.9 — 14 kini versi yang benar).
+#      versi 15 / "2.0.10" (v2.0.10 — 15 kini versi yang benar).
 if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
     errors.append(
         "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
@@ -1346,13 +1438,13 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9"
+        "app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10"
     )
-if '"2.0.9"' not in _app_gradle:
+if '"2.0.10"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib "2.0.9"'
+        'app/build.gradle.kts: versionName wajib "2.0.10"'
     )
 
 # 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
@@ -1747,20 +1839,70 @@ for _bad in ("userEmail", "emailUser"):
             f"DiagLogger.kt/DiagLog.kt: {_bad} dilarang — email pengguna "
             "tidak boleh masuk log diagnostik (v2.0.9 item 1, D-privasi-log)"
         )
+# 20e (DIPERKUAT v2.0.10 — L-1/L-2 Pentest v2.0.9).
+#  L-1: pola LAMA hanya menangkap `DiagLogger` kapital di SATU baris —
+#       pemanggilan multi-baris (`diagLogger?.info(\n  ... raw ...\n)`)
+#       dan variabel huruf kecil `diagLogger` lolos. Kini: cari semua
+#       pemanggilan diagLogger.info/warn/error (tak peka huruf) di teks
+#       yang sudah dibuang string/komentarnya, lalu pindai jendela
+#       kurung-berimbang sesudahnya untuk kata `raw` (variabel payload
+#       mentah — teks literal string tidak dihitung, TAPI isi template
+#       `${...}` / `$nama` DIHITUNG karena itu kode hidup: F-6, bentuk
+#       `"raw=${raw.take(50)}"` dulu lolos karena strip membuang isi
+#       string beserta interpolasinya).
+#  L-2: cek lama hanya memastikan string "sanitize(" ADA di mana pun di
+#       DiagLogger.kt — kini dipastikan ADA DI DALAM badan fun log()
+#       (kurung-kurawal-berimbang dari `private fun log(`).
 for _f in kt_files:
     _t = _f.read_text(encoding="utf-8", errors="replace")
-    for _i, _line in enumerate(_t.split("\n"), start=1):
-        if re.search(r"DiagLogger.*\braw\b", _line):
+    _stripped = strip_kotlin(_t)
+    # Satu pola untuk `diagLogger?.info(` dan `diagLogger.info(`.
+    for _m in re.finditer(
+        r"diagLogger\s*(?:\?)?\.\s*(?:info|warn|error)\s*\(",
+        _stripped, flags=re.IGNORECASE
+    ):
+        _open = _m.end() - 1  # "(" pemanggilan itu sendiri
+        _depth = 0
+        _k = _open
+        while _k < len(_stripped):
+            if _stripped[_k] == "(":
+                _depth += 1
+            elif _stripped[_k] == ")":
+                _depth -= 1
+                if _depth == 0:
+                    break
+            _k += 1
+        if re.search(r"\braw\b", _stripped[_open:_k + 1]):
+            _line_no = _stripped.count("\n", 0, _m.start()) + 1
             errors.append(
-                f"{_f.relative_to(ROOT)}:{_i}: DiagLogger tidak boleh "
+                f"{_f.relative_to(ROOT)}:{_line_no}: DiagLogger tidak boleh "
                 "dipanggil dengan variabel `raw` — payload mentah "
                 "dilarang di Konsol (hanya ke logcat, di requireData — "
                 "v2.0.9 item 1, D-privasi-log)"
             )
-if "sanitize(" not in _diag_logger_kt:
+# L-2: sanitize( wajib ADA DI DALAM badan fun log() DiagLogger.kt.
+_log_fn = strip_kotlin(_diag_logger_kt)
+_log_start = _log_fn.find("private fun log(")
+_log_body = ""
+if _log_start >= 0:
+    _brace = _log_fn.find("{", _log_start)
+    if _brace >= 0:
+        _depth = 0
+        _k = _brace
+        while _k < len(_log_fn):
+            if _log_fn[_k] == "{":
+                _depth += 1
+            elif _log_fn[_k] == "}":
+                _depth -= 1
+                if _depth == 0:
+                    break
+            _k += 1
+        _log_body = _log_fn[_brace:_k + 1]
+if "sanitize(" not in _log_body:
     errors.append(
-        "DiagLogger.kt: sanitize( wajib ada — semua pesan log harus "
-        "lewat sanitasi URL (v2.0.9 item 1, D-privasi-log)"
+        "DiagLogger.kt: sanitize( wajib ada DI DALAM badan fun log() — "
+        "semua pesan log harus lewat sanitasi URL (v2.0.9 item 1, "
+        "D-privasi-log; L-2 Pentest v2.0.9)"
     )
 if "Video tidak tersedia" in _all_kt or "Video tidak tersedia" in _res_text:
     errors.append(
@@ -1815,24 +1957,29 @@ for _h in ("versionName", "Build.MODEL", "Build.VERSION.RELEASE"):
             "(v2.0.9 item 7)"
         )
 
-# 20h. Versi: §13d + §18o naik ke 14 / "2.0.9" (re-assert — gerbang
+# 20h. Versi: §13d + §18o naik ke 15 / "2.0.10" (re-assert — gerbang
 #      versi harus lolos SETELAH bump; pola v2.0.8: §13d ikut naik).
-if not re.search(r"versionCode\s*=\s*14\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 14 untuk v2.0.9")
-if '"2.0.9"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.9"')
+if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10")
+if '"2.0.10"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.10"')
 
-# 20i. Swipe tab dimatikan (v2.0.9 #9): "isUserInputEnabled = false"
-#      ADA di MainActivity.kt (navigasi tab hanya lewat ketuk TabLayout);
-#      carousel "isUserInputEnabled = true" di HomeFragment.kt TIDAK
-#      BOLEH ikut dimatikan (auto-scroll + geser slide tetap jalan).
-if "isUserInputEnabled = false" not in _main_kt:
+# 20i (DIPERKUAT v2.0.10 — O-3 Cari Bug v2.0.9): cek pada teks yang
+#      sudah dibuang string/komentarnya (strip_kotlin) — baris yang
+#      dikomentari tidak boleh lagi memenuhi gerbang. Swipe tab dimatikan
+#      (v2.0.9 #9): "isUserInputEnabled = false" ADA di MainActivity.kt
+#      (navigasi tab hanya lewat ketuk TabLayout); carousel
+#      "isUserInputEnabled = true" di HomeFragment.kt TIDAK BOLEH ikut
+#      dimatikan (auto-scroll + geser slide tetap jalan).
+_main_stripped = strip_kotlin(_main_kt)
+_home_stripped = strip_kotlin(_home_kt)
+if "isUserInputEnabled = false" not in _main_stripped:
     errors.append(
         "MainActivity.kt: viewpager.isUserInputEnabled = false wajib ada "
         "(swipe tab dimatikan — geser di baris/carousel tidak boleh "
         "pindah tab — v2.0.9 #9)"
     )
-if "isUserInputEnabled = true" not in _home_kt:
+if "isUserInputEnabled = true" not in _home_stripped:
     errors.append(
         "HomeFragment.kt: carousel isUserInputEnabled = true wajib tetap "
         "ada (geser slide hero tetap jalan — v2.0.9 #9)"
@@ -1854,6 +2001,316 @@ if "coil.listener" in _diag_poster_kt:
         "DiagPosterListener.kt: coil.listener TIDAK BOLEH ada "
         "(paket itu tidak ada di Coil 2.5.0 — Unresolved reference)"
     )
+
+# ---------- 21. Gerbang v2.0.10 — perbaikan video + log v2.0.9 ----------
+
+_console_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "console" / "ConsoleActivity.kt"
+).read_text(encoding="utf-8")
+_console_xml = (RES / "layout" / "activity_console.xml").read_text(encoding="utf-8")
+_slide_xml = (RES / "layout" / "item_slide.xml").read_text(encoding="utf-8")
+_history_adapters_kt = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "adapter" / "HistoryAdapters.kt"
+).read_text(encoding="utf-8")
+_strings_xml = (RES / "values" / "strings.xml").read_text(encoding="utf-8")
+_test_v210_path = ROOT.parent / "tasks" / "uji" / "src" / "TestV210.kt"
+_test_v210 = (
+    _test_v210_path.read_text(encoding="utf-8") if _test_v210_path.exists()
+    else ""
+)
+
+# 21a. Resolve nomor ganda (item 1): pickEpisodeSlug ADA di
+#      SankaRepository + DIPAKAI di DetailActivity, EpisodeActivity, DAN
+#      VideoPlayActivity (episodeSlugs) — lookup mentah
+#      `firstOrNull { it.number == episode }` TIDAK BOLEH tersisa di
+#      kode kedua Activity itu (dicek pada teks strip_kotlin — penyebutan
+#      di komentar/KDoc tidak dihitung).
+if "fun pickEpisodeSlug" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: fun pickEpisodeSlug wajib ada "
+        "(pilih slug episode asli, bukan spesial/batch — v2.0.10 #1)"
+    )
+for _name, _text in (
+    ("DetailActivity.kt", _detail_kt),
+    ("EpisodeActivity.kt", _episode_kt),
+    ("VideoPlayActivity.kt", _video_kt),
+):
+    if "pickEpisodeSlug(" not in _text:
+        errors.append(
+            f"{_name}: pickEpisodeSlug( wajib dipakai — lookup nomor "
+            "episode mentah bisa kena entri Spesial (v2.0.10 #1)"
+        )
+for _name, _text in (
+    ("DetailActivity.kt", _detail_kt),
+    ("EpisodeActivity.kt", _episode_kt),
+):
+    if "firstOrNull { it.number == episode }" in strip_kotlin(_text):
+        errors.append(
+            f"{_name}: lookup mentah `firstOrNull {{ it.number == "
+            "episode }}` dilarang — pakai pickEpisodeSlug (v2.0.10 #1)"
+        )
+
+# 21b. Error 1 huruf R8 (item 2): `simpleName` = 0 di semua file .kt
+#      (dicek pada teks strip_kotlin — penyebutan di komentar tidak
+#      dihitung), KECUALI SankaWebTransport.kt yang DIBEKUKAN (jangan
+#      disentuh — aturan v2.0.8): di sana tersisa TEPAT 1 pemakaian,
+#      di catch-all sankaErrorReason yang pesannya didahulukan
+#      ("<nama>: <pesan>" — pesan tetap terbaca walau namanya 1 huruf).
+for _f in kt_files:
+    _stripped = strip_kotlin(_f.read_text(encoding="utf-8", errors="replace"))
+    _n = _stripped.count("simpleName")
+    if _f.name == "SankaWebTransport.kt":
+        if _n > 1:
+            errors.append(
+                "SankaWebTransport.kt: simpleName hanya boleh tersisa 1 "
+                "(catch-all sankaErrorReason yang pesannya didahulukan — "
+                "file dibekukan, jangan tambah pemakaian baru — v2.0.10 #2)"
+            )
+    elif _n > 0:
+        errors.append(
+            f"{_f.relative_to(ROOT)}: simpleName ({_n}×) dilarang — nama "
+            "kelas hasil rename R8 (1 huruf) tidak boleh masuk log; pakai "
+            "DiagError.describe (v2.0.10 #2)"
+        )
+
+# 21c. Log resolve mencatat slug (item 3): "slug=" ADA di baris log
+#      resolve PlayerRepository + "slug=$episodeSlug" di baris "resolve
+#      selesai" VideoPlayActivity.
+if "slug=" not in _player_repo_kt:
+    errors.append(
+        "PlayerRepository.kt: baris log resolve wajib mencatat slug "
+        "episode (slug=...) — tanpa ini resolve yang salah pilih slug "
+        "tidak bisa dibedakan dari yang benar (v2.0.10 #3)"
+    )
+if "slug=$episodeSlug" not in _video_kt:
+    errors.append(
+        "VideoPlayActivity.kt: baris 'resolve selesai' wajib mencatat "
+        "slug=$episodeSlug (v2.0.10 #3)"
+    )
+
+# 21d. Baris Beranda tidak patah-patah (item 4): `isNestedScrollingEnabled
+#      = true` = 0 di HomeFragment, `= false` ≥ 2 (kedua baris).
+_home_nested_true = strip_kotlin(_home_kt).count("isNestedScrollingEnabled = true")
+_home_nested_false = strip_kotlin(_home_kt).count("isNestedScrollingEnabled = false")
+if _home_nested_true != 0:
+    errors.append(
+        "HomeFragment.kt: isNestedScrollingEnabled = true dilarang "
+        f"({_home_nested_true}×) — biang patah-patah baris Beranda "
+        "(v2.0.10 #4)"
+    )
+if _home_nested_false < 2:
+    errors.append(
+        "HomeFragment.kt: isNestedScrollingEnabled = false wajib ada di "
+        "KEDUA baris Beranda (baru "
+        f"{_home_nested_false}× — v2.0.10 #4)"
+    )
+
+# 21e. Ranking pencarian diuji (item 5): TestV210.kt wajib memuat tes
+#      sufiks "[...]" + musim di tengah subjudul (kasus live v2.0.9).
+if not _test_v210:
+    errors.append(
+        "tasks/uji/src/TestV210.kt wajib ada (tes fungsi murni v2.0.10)"
+    )
+else:
+    for _needle in (
+        "stripBracketSuffix", "seasonRankFor", "tantei wa mou",
+    ):
+        if _needle not in _test_v210:
+            errors.append(
+                f"TestV210.kt: tes ranking wajib memuat '{_needle}' "
+                "(sufiks [...] + musim di tengah subjudul — v2.0.10 #5)"
+            )
+
+# 21f. Log error search mencatat query (item 6): searchEndpointLabel ADA
+#      + DIPAKAI di search() SankaRepository; baris gagal BrowseFragment
+#      memangkas query ke 40 karakter (take(40) ≥ 2× di file itu —
+#      1× di baris sukses + 1× di baris gagal).
+if "fun searchEndpointLabel" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: fun searchEndpointLabel wajib ada "
+        "(endpoint search membawa query — v2.0.10 #6)"
+    )
+if "searchEndpointLabel(query)" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: search() wajib memakai searchEndpointLabel "
+        "(query yang gagal harus tercatat — v2.0.10 #6)"
+    )
+if _browse_kt.count("take(40)") < 2:
+    errors.append(
+        "BrowseFragment.kt: baris gagal wajib memangkas query ke 40 "
+        "karakter (take(40) ≥ 2× — sukses + gagal — v2.0.10 #6)"
+    )
+
+# 21g. Judul toolbar Konsol sadar-tema (item 7): titleTextColor memakai
+#      ?attr/ di activity_console.xml; TIDAK ADA warna hitam keras di
+#      layout Konsol + ConsoleActivity (nama drawable
+#      `ic_arrow_back_black_24dp` bukan warna — tidak dihitung).
+if 'app:titleTextColor="?attr/textColor"' not in _console_xml:
+    errors.append(
+        "activity_console.xml: toolbar_console wajib memakai "
+        'app:titleTextColor="?attr/textColor" (judul Konsol gelap-di-'
+        "gelap di tema gelap — v2.0.10 #7)"
+    )
+for _bad in ("#000", "Color.BLACK", "@android:color/black"):
+    if _bad in _console_xml or _bad in _console_kt:
+        errors.append(
+            f"Konsol: {_bad} dilarang di activity_console.xml / "
+            "ConsoleActivity.kt — warna keras tidak sadar-tema "
+            "(v2.0.10 #7)"
+        )
+
+# 21h. Urutan coba kandidat diuji (item 9): TestV210.kt wajib memuat tes
+#      CandidateTryOrder (kasus #0 tidak pernah dicoba — v2.0.9).
+if "CandidateTryOrder" not in _test_v210:
+    errors.append(
+        "TestV210.kt: tes CandidateTryOrder wajib ada "
+        "(kandidat #0 ikut dicoba — v2.0.10 #9)"
+    )
+
+# 21i. Riwayat hanya bila frame pertama tercapai (item 10): guard
+#      per-episode ADA DI DALAM badan persistResume VideoPlayActivity;
+#      nama lama `hasFirstFrame` TIDAK BOLEH tersisa.
+#      (Pass delta F-1: guard dulu `if (!firstFrameReached) return` —
+#      flag itu bersemantik per-kandidat karena di-reset di startMedia3,
+#      sehingga keluar saat buffering retry kehilangan Riwayat. Kini
+#      guard memakai FirstFrameTracker.hasEpisodeReachedFirstFrame().)
+_persist_stripped = strip_kotlin(_video_kt)
+_persist_start = _persist_stripped.find("private fun persistResume()")
+_persist_body = ""
+if _persist_start >= 0:
+    _brace = _persist_stripped.find("{", _persist_start)
+    if _brace >= 0:
+        _depth = 0
+        _k = _brace
+        while _k < len(_persist_stripped):
+            if _persist_stripped[_k] == "{":
+                _depth += 1
+            elif _persist_stripped[_k] == "}":
+                _depth -= 1
+                if _depth == 0:
+                    break
+            _k += 1
+        _persist_body = _persist_stripped[_brace:_k + 1]
+if "hasEpisodeReachedFirstFrame()" not in _persist_body:
+    errors.append(
+        "VideoPlayActivity.kt: persistResume wajib dijaga guard "
+        "per-episode `hasEpisodeReachedFirstFrame()` — film/episode yang "
+        "langsung gagal tidak boleh masuk Riwayat (v2.0.10 #10; F-1)"
+    )
+if "hasFirstFrame" in strip_kotlin(_video_kt):
+    errors.append(
+        "VideoPlayActivity.kt: nama lama hasFirstFrame tidak boleh "
+        "tersisa — sudah diganti FirstFrameTracker (v2.0.10 #10; F-1)"
+    )
+
+# 21j. Daftar izin import (O-4 Cari Bug v2.0.9): setiap import di file
+#      .kt wajib berawalan segmen yang diizinkan (dienumerasi dari
+#      import yang benar-benar ada di tree); `coil.listener` dilarang
+#      di mana pun (paket itu tidak ada di Coil 2.5.0 — §20j).
+_ALLOWED_IMPORT_FIRST = {
+    "android", "androidx", "animelovers", "coil", "com", "io", "java",
+    "javax", "kotlin", "kotlinx", "okhttp3", "org",
+}
+for _f in kt_files:
+    for _line in _f.read_text(encoding="utf-8", errors="replace").split("\n"):
+        _s = _line.strip()
+        if not _s.startswith("import "):
+            continue
+        _imp = _s[len("import "):].strip()
+        if _imp.startswith("coil.listener"):
+            errors.append(
+                f"{_f.relative_to(ROOT)}: import coil.listener dilarang — "
+                "paket itu tidak ada di Coil 2.5.0 (v2.0.10 §21j)"
+            )
+        _first = _imp.split(".")[0]
+        if _first not in _ALLOWED_IMPORT_FIRST:
+            errors.append(
+                f"{_f.relative_to(ROOT)}: import '{_imp}' berawalan "
+                f"'{_first}' — di luar daftar izin import "
+                "(v2.0.10 §21j)"
+            )
+
+# 21k. Judul hero tidak terpotong di tengah kata (item 11): slideNameTXT
+#      di item_slide.xml wajib maxLines=3 + ellipsize=end.
+if 'android:maxLines="3"' not in _slide_xml or 'android:ellipsize="end"' not in _slide_xml:
+    errors.append(
+        "item_slide.xml: slideNameTXT wajib maxLines=3 + ellipsize=end "
+        "(judul hero panjang terpotong di tengah kata — v2.0.10 #11)"
+    )
+
+# 21l. M-4 (Cari Bug v2.0.7): pendingEpisode ADA di DetailActivity +
+#      string detail_memuat ADA di strings.xml (ketukan "Lanjutkan"
+#      sebelum /detail kembali ditahan, bukan toast gagal).
+if "pendingEpisode" not in _detail_kt:
+    errors.append(
+        "DetailActivity.kt: pendingEpisode wajib ada — ketukan "
+        "'Lanjutkan' sebelum /detail kembali harus ditahan lalu diputar "
+        "begitu detail tiba (M-4, v2.0.10 #15)"
+    )
+if "detail_memuat" not in _strings_xml:
+    errors.append(
+        "strings.xml: string detail_memuat wajib ada "
+        "(M-4, v2.0.10 #15)"
+    )
+
+# 21m. M-1 (Cari Bug v2.0.7): 6 situs poster Detail + Riwayat wajib
+#      memakai helper loadPoster (bukan .load langsung dengan
+#      error splashh) — helper memberi ikon error + ketuk-coba-lagi.
+if "error(R.drawable.splashh)" in strip_kotlin(_detail_kt):
+    errors.append(
+        "DetailActivity.kt: error(R.drawable.splashh) dilarang — poster "
+        "Detail wajib memakai helper loadPoster (M-1, v2.0.10 #15)"
+    )
+if "error(R.drawable.splashh)" in strip_kotlin(_history_adapters_kt):
+    errors.append(
+        "HistoryAdapters.kt: error(R.drawable.splashh) dilarang — poster "
+        "Riwayat wajib memakai helper loadPoster (M-1, v2.0.10 #15)"
+    )
+if "loadPoster(" not in _detail_kt or "loadPoster(" not in _history_adapters_kt:
+    errors.append(
+        "DetailActivity.kt/HistoryAdapters.kt: loadPoster( wajib dipakai "
+        "di kedua file (M-1, v2.0.10 #15)"
+    )
+
+# 21n. M-2/M-3 (Cari Bug v2.0.7): homeMemoryCached() mati TIDAK BOLEH ada
+#      (nol pemanggil — yang hidup homeCached()); writeHomeToDisk wajib
+#      tulis atomik (file .tmp + renameTo).
+if "fun homeMemoryCached" in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: homeMemoryCached() mati wajib dihapus "
+        "(M-2, v2.0.10 #15)"
+    )
+if ".tmp" not in _repo_kt or "renameTo(" not in _repo_kt:
+    errors.append(
+        "SankaRepository.kt: writeHomeToDisk wajib tulis atomik "
+        "(file .tmp + renameTo — M-3, v2.0.10 #15)"
+    )
+
+# 21o. M-1 Cari Bug v2.0.9 (race DiagLogger): DiagFileMirror ADA di
+#      DiagLog.kt + DIPAKAI DiagLogger.kt (seq + generasi + reset);
+#      clear() TIDAK BOLEH menghapus file secara async (launch).
+if "class DiagFileMirror" not in _diag_log_kt:
+    errors.append(
+        "DiagLog.kt: class DiagFileMirror wajib ada — penjaga urutan "
+        "tulis file log (M-1 Cari Bug v2.0.9, v2.0.10 #12)"
+    )
+if "fileMirror" not in _diag_logger_kt:
+    errors.append(
+        "DiagLogger.kt: fileMirror (DiagFileMirror) wajib dipakai — "
+        "tulis file log tidak boleh lagi dari nilai saat log() dipanggil "
+        "(M-1 Cari Bug v2.0.9, v2.0.10 #12)"
+    )
+_clear_stripped = strip_kotlin(_diag_logger_kt)
+_clear_start = _clear_stripped.find("fun clear()")
+if _clear_start >= 0:
+    _clear_window = _clear_stripped[_clear_start:_clear_start + 1200]
+    if "fileScope.launch" in _clear_window:
+        errors.append(
+            "DiagLogger.kt: clear() tidak boleh menghapus file secara "
+            "async (fileScope.launch) — hapus sinkron supaya force-stop "
+            "tidak menghidupkan kembali file lama "
+            "(M-1 Cari Bug v2.0.9, v2.0.10 #12)"
+        )
 
 # ---------- Laporan ----------
 

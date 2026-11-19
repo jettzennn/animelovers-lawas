@@ -28,6 +28,7 @@
     <!-- State error Detail (v2.0.5, temuan Minor Cari Bug): pesan menetap +
          tombol Coba lagi — bukan cuma toast + pull-to-refresh. -->
     <string name="detail_gagal">Gagal memuat detail. Periksa koneksimu lalu coba lagi.</string>
+    <string name="detail_memuat">Detail masih dimuat, tunggu sebentar.</string>
     <string name="coba_lagi">Coba lagi</string>
     <string name="tidak_ada_koneksi">Tidak ada koneksi internet</string>
 

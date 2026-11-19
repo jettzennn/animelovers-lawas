@@ -8,6 +8,7 @@ import animelovers.rebornhd.data.model.SamehadakuEpisodeData
 import animelovers.rebornhd.data.model.SamehadakuSearchData
 import animelovers.rebornhd.data.model.SamehadakuSearchItem
 import animelovers.rebornhd.data.model.SankaEnvelope
+import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.DiagLogger
 import com.google.gson.Gson
@@ -128,7 +129,10 @@ class SamehadakuRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "search Samehadaku gagal (${e.javaClass.simpleName})", e)
+            // v2.0.10 item 2: nama kelas hasil rename R8 (1 huruf) tidak
+            // boleh masuk log — pakai pesan yang bisa dibaca. Exception
+            // tetap dilampirkan (stack lengkap di logcat).
+            Log.w(TAG, "search Samehadaku gagal (${DiagError.describe(e)})", e)
             return null
         }
         val items = try {
@@ -172,7 +176,8 @@ class SamehadakuRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "episode Samehadaku gagal (${e.javaClass.simpleName})", e)
+            // v2.0.10 item 2: lihat search di atas — tanpa simpleName.
+            Log.w(TAG, "episode Samehadaku gagal (${DiagError.describe(e)})", e)
             return null
         }
         val url = try {

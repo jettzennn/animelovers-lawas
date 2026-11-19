@@ -25,6 +25,7 @@ import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.adapter.BrowseListAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
+import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
@@ -364,8 +365,20 @@ class BrowseFragment : Fragment() {
                 throw e
             } catch (e: Exception) {
                 if (isAdded) {
+                    // v2.0.10 #6: baris gagal menyebut JENIS + query/genre
+                    // (maks 40 karakter) — dulu hanya "gagal (u)": query
+                    // yang gagal + penyebabnya tidak tercatat (video
+                    // v2.0.9: query "one piece" gagal tanpa jejak). Pesan
+                    // error juga tanpa simpleName (item 2).
+                    val detail = when (kind) {
+                        "search" -> "Cari '${query.trim().take(40)}': " +
+                            "gagal (${DiagError.describe(e)})"
+                        "genre" -> "Genre '${genreFilterSlug ?: "?"}': " +
+                            "gagal (${DiagError.describe(e)})"
+                        else -> "gagal (${DiagError.describe(e)})"
+                    }
                     requireContext().app().diagLogger.error(
-                        DiagLog.TAG_JELAJAHI, "gagal (${e.javaClass.simpleName})"
+                        DiagLog.TAG_JELAJAHI, detail
                     )
                     requireContext().toastSankaError(e)
                 }
