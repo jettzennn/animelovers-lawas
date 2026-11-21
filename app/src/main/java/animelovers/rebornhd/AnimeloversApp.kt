@@ -5,7 +5,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import animelovers.rebornhd.data.api.SankaTransport
 import animelovers.rebornhd.data.api.SankaWebTransport
 import animelovers.rebornhd.data.auth.AuthRepository
-import animelovers.rebornhd.data.auth.StubAuthRepository
+import animelovers.rebornhd.data.auth.FirebaseAuthRepository
 import animelovers.rebornhd.data.local.AppDatabase
 import animelovers.rebornhd.data.repo.PlayerRepository
 import animelovers.rebornhd.data.repo.SamehadakuRepository
@@ -31,9 +31,9 @@ import java.util.concurrent.TimeUnit
 /**
  * Application — satu tempat membuat dependensi (tanpa DI framework, PRD §3.2).
  *
- * Auth: [authRepository] saat ini [StubAuthRepository] (Firebase belum dipasang).
- * Bila proyek Firebase baru sudah dibuat (docs/firebase-setup.md), ganti
- * satu baris ini ke implementasi Firebase — UI + gerbang tidak berubah.
+ * Auth: [authRepository] adalah [FirebaseAuthRepository] (v2.0.12 —
+ * masuk Google/Facebook sungguhan via Firebase Auth). Stub tidak lagi
+ * terikat (berkasnya dipertahankan sebagai referensi).
  *
  * v2: satu-satunya sumber konten adalah Sanka (sankaTransport +
  * sankaRepository). VidCloud/MegaPlay/backend kecil sudah dihapus.
@@ -134,7 +134,7 @@ class AnimeloversApp : Application(), ImageLoaderFactory {
         )
     }
 
-    val authRepository: AuthRepository by lazy { StubAuthRepository(this) }
+    val authRepository: AuthRepository by lazy { FirebaseAuthRepository(this) }
 
     val sankaRepository: SankaRepository by lazy {
         // v2.0.7 #3: cache disk Beranda — filesDir (bertahan antar proses,

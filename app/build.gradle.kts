@@ -5,8 +5,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
-    // v2.0.11: google-services — JANGAN firebase-auth / play-services-auth
-    // (login TIDAK dibangun di versi ini; StubAuthRepository tetap).
+    // v2.0.12: login berfungsi — google-services + firebase-auth +
+    // play-services-auth + facebook-login (dulu dilarang di v2.0.11 karena
+    // login belum dibangun; StubAuthRepository sudah diganti Firebase).
     alias(libs.plugins.google.services)
 }
 
@@ -21,8 +22,8 @@ android {
         targetSdk = 34
         // ATURAN TETAP: setiap rilis baru WAJIB menaikkan versionName (sama dengan tag GitHub)
         // dan versionCode (+1) — halaman Info aplikasi Android menampilkan versionName ini.
-        versionCode = 16
-        versionName = "2.0.11"
+        versionCode = 17
+        versionName = "2.0.12"
     }
 
     buildTypes {
@@ -97,9 +98,14 @@ dependencies {
     implementation(libs.room.ktx)
     implementation(libs.shimmer)
     // v2.0.11: saklar jarak jauh — BOM 32.7.0 + Remote Config +
-    // Installations. TIDAK ADA firebase-auth (login bukan bagian versi ini).
+    // Installations.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.config.ktx)
     implementation(libs.firebase.installations.ktx)
+    // v2.0.12: login berfungsi — firebase-auth-ktx (dikelola BOM) +
+    // Google Sign-In 20.7.0 + Facebook Login SDK 16.3.0.
+    implementation(libs.firebase.auth.ktx)
+    implementation(libs.play.services.auth)
+    implementation(libs.facebook.login)
     ksp(libs.room.compiler)
 }

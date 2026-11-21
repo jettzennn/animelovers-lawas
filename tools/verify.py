@@ -582,10 +582,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11")
-if '"2.0.11"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.11"')
+if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12")
+if '"2.0.12"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.12"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -1439,13 +1439,13 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11"
+        "app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12"
     )
-if '"2.0.11"' not in _app_gradle:
+if '"2.0.12"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib "2.0.11"'
+        'app/build.gradle.kts: versionName wajib "2.0.12"'
     )
 
 # 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
@@ -1958,12 +1958,12 @@ for _h in ("versionName", "Build.MODEL", "Build.VERSION.RELEASE"):
             "(v2.0.9 item 7)"
         )
 
-# 20h. Versi: §13d + §18o naik ke 16 / "2.0.11" (re-assert — gerbang
+# 20h. Versi: §13d + §18o naik ke 17 / "2.0.12" (re-assert — gerbang
 #      versi harus lolos SETELAH bump; pola v2.0.8: §13d ikut naik).
-if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11")
-if '"2.0.11"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.11"')
+if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12")
+if '"2.0.12"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.12"')
 
 # 20i (DIPERKUAT v2.0.10 — O-3 Cari Bug v2.0.9): cek pada teks yang
 #      sudah dibuang string/komentarnya (strip_kotlin) — baris yang
@@ -2391,19 +2391,29 @@ try:
 except Exception:
     warnings.append("verify.py §22b: git tidak bisa dijalankan — tidak bisa memastikan google-services.json tidak terindeks")
 
-# 22c. Gradle: versionCode 16 / "2.0.11"; BOM 32.7.0 + config-ktx +
-#      installations-ktx; plugin google-services 4.4.0; TANPA
-#      firebase-auth / play-services-auth / facebook-login.
+# 22c. (DIPERBARUI v2.0.12) Gradle: versionCode 17 / "2.0.12";
+#      BOM 32.7.0 + config-ktx + installations-ktx + auth-ktx +
+#      play-services-auth + facebook-login; plugin google-services
+#      4.4.0. Larangan v2.0.11 atas firebase-auth/play-services-auth/
+#      facebook-login SUDAH DICABUT (login dibangun di v2.0.12) —
+#      komentar larangan lama wajib sudah diganti.
 _ks_app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
 _ks_root_gradle = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
 _ks_toml = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
-if "versionCode = 16" not in _ks_app_gradle:
-    errors.append("app/build.gradle.kts: versionCode wajib 16 (v2.0.11)")
-if 'versionName = "2.0.11"' not in _ks_app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.11" (v2.0.11)')
-for _ks_dep in ("firebase.bom", "firebase.config.ktx", "firebase.installations.ktx"):
+if "versionCode = 17" not in _ks_app_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 17 (v2.0.12)")
+if 'versionName = "2.0.12"' not in _ks_app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.12" (v2.0.12)')
+for _ks_dep in (
+    "firebase.bom",
+    "firebase.config.ktx",
+    "firebase.installations.ktx",
+    "firebase.auth.ktx",
+    "play.services.auth",
+    "facebook.login",
+):
     if _ks_dep not in _ks_app_gradle:
-        errors.append(f"app/build.gradle.kts: {_ks_dep} wajib ada (v2.0.11 #1)")
+        errors.append(f"app/build.gradle.kts: {_ks_dep} wajib ada (v2.0.12 #1)")
 if "google.services" not in _ks_app_gradle or "google.services" not in _ks_root_gradle:
     errors.append(
         "plugin google-services wajib diterapkan di root + app "
@@ -2414,23 +2424,12 @@ if '"32.7.0"' not in _ks_toml or '"4.4.0"' not in _ks_toml:
         "gradle/libs.versions.toml: firebase-bom wajib 32.7.0 dan "
         "google-services wajib 4.4.0 (v2.0.11 #1)"
     )
-for _ks_forbidden_dep in ("firebase-auth", "play-services-auth", "facebook-login"):
-    # Komentar (// di gradle, # di toml) dibuang dulu — komentar
-    # "JANGAN firebase-auth ..." di app/build.gradle.kts sendiri
-    # tidak boleh memicu gerbang; yang dicek deklarasi dependensi.
-    _ks_gradle_code = "\n".join(
-        _ks_line for _ks_line in _ks_app_gradle.splitlines()
-        if not _ks_line.strip().startswith("//")
+if "JANGAN firebase-auth" in _ks_app_gradle:
+    errors.append(
+        "app/build.gradle.kts: komentar larangan 'JANGAN firebase-auth' "
+        "dari v2.0.11 wajib sudah diganti — login dibangun di v2.0.12 "
+        "(PRD §B1)"
     )
-    _ks_toml_code = "\n".join(
-        _ks_line for _ks_line in _ks_toml.splitlines()
-        if not _ks_line.strip().startswith("#")
-    )
-    if _ks_forbidden_dep in _ks_gradle_code or _ks_forbidden_dep in _ks_toml_code:
-        errors.append(
-            f"{_ks_forbidden_dep} DILARANG di v2.0.11 — login TIDAK "
-            "dibangun di versi ini (StubAuthRepository tetap)"
-        )
 
 # 22d. Splash cek SEBELUM disclaimer/Main (maks. 5 detik); Main punya
 #      startDead + cek ulang onResume (>15 menit).
@@ -2658,6 +2657,341 @@ for _ks_retry_name, _ks_retry_path in (
             "check(force = true) — retry manual memaksa fetch segar "
             "(delta F-2)"
         )
+
+# ---------- v2.0.12 (login Google + Facebook via Firebase Auth) ----------
+
+def _lg_no_diff(rel_paths):
+    """True bila worktree sama dengan basis 6e908f6 untuk path-path itu.
+    None bila git tidak bisa dijalankan (pemanggil mengubah jadi warning)."""
+    try:
+        # WAJIB cek dulu repo + revisi basis ada: di luar repo git,
+        # `git diff --quiet <rev> -- <path>` jatuh ke jalur --no-index
+        # dan mengembalikan 1 (satu path) / 129 (dua path) — kode yang
+        # SAMA dengan "ada diff" — jadi returncode saja tidak bisa
+        # membedakan "git gagal" dari "ada diff" (bukti: /tmp/manual-neg,
+        # F-1 susulan). rev-parse gagal -> None (warning di pemanggil).
+        _lg_ok = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--verify", "--quiet",
+             "6e908f6^{commit}"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if _lg_ok.returncode != 0:
+            return None
+        _lg_r = subprocess.run(
+            ["git", "-C", str(ROOT), "diff", "--quiet", "6e908f6", "--"] + rel_paths,
+            capture_output=True, text=True, timeout=15,
+        )
+        # Setelah rev-parse lolos, 0 = tidak ada diff, 1 = ada diff;
+        # kode lain (tak terduga) tetap diperlakukan sebagai "git gagal".
+        return True if _lg_r.returncode == 0 else (False if _lg_r.returncode == 1 else None)
+    except Exception:
+        return None
+
+_lg_auth_dir = JAVA / "animelovers" / "rebornhd" / "data" / "auth"
+_lg_repo_path = _lg_auth_dir / "FirebaseAuthRepository.kt"
+_lg_session_path = _lg_auth_dir / "LoginSession.kt"
+_lg_interface_path = _lg_auth_dir / "AuthRepository.kt"
+_lg_app_path = JAVA / "animelovers" / "rebornhd" / "AnimeloversApp.kt"
+_lg_setting_path = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "settings" / "SettingActivity.kt"
+)
+_lg_detail_path = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "detail" / "DetailActivity.kt"
+)
+_lg_manifest_path = ROOT / "app" / "src" / "main" / "AndroidManifest.xml"
+_lg_toml = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
+_lg_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+
+# 23a. Dependensi login dipatok versinya (PRD §B1): firebase-auth-ktx
+#      dikelola BOM 32.7.0 (tanpa version.ref), play-services-auth
+#      20.7.0, facebook-login 16.3.0.
+if 'play-services-auth = "20.7.0"' not in _lg_toml:
+    errors.append(
+        "gradle/libs.versions.toml: play-services-auth wajib 20.7.0 "
+        "(v2.0.12 #1)"
+    )
+if 'facebook-login = "16.3.0"' not in _lg_toml:
+    errors.append(
+        "gradle/libs.versions.toml: facebook-login wajib 16.3.0 "
+        "(v2.0.12 #1)"
+    )
+_lg_auth_lines = [
+    _lg_line for _lg_line in _lg_toml.splitlines()
+    if "firebase-auth-ktx" in _lg_line
+    and not _lg_line.strip().startswith("#")
+]
+if not _lg_auth_lines:
+    errors.append(
+        "gradle/libs.versions.toml: firebase-auth-ktx wajib ada "
+        "(v2.0.12 #1)"
+    )
+elif "version.ref" in _lg_auth_lines[0]:
+    errors.append(
+        "gradle/libs.versions.toml: firebase-auth-ktx wajib dikelola "
+        "firebase-bom (tanpa version.ref, v2.0.12 #1)"
+    )
+if '"32.7.0"' not in _lg_toml:
+    errors.append(
+        "gradle/libs.versions.toml: firebase-bom wajib tetap 32.7.0 "
+        "(v2.0.12 #1)"
+    )
+
+# 23b. Versi 17 / "2.0.12" (re-assert §22c — gerbang versi harus
+#      lolos SETELAH bump).
+if "versionCode = 17" not in _lg_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 17 (v2.0.12)")
+if 'versionName = "2.0.12"' not in _lg_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.12" (v2.0.12)')
+
+# 23c. FirebaseAuthRepository: signInWithCredential untuk kedua
+#      provider (Google + Facebook) + signOut membersihkan Prefs
+#      auth dan pref Ecchi.
+if not _lg_repo_path.exists():
+    errors.append(
+        "FirebaseAuthRepository.kt tidak ada — implementasi login "
+        "Firebase (v2.0.12 #2)"
+    )
+else:
+    _lg_repo = _lg_repo_path.read_text(encoding="utf-8")
+    for _lg_need in (
+        "GoogleAuthProvider.getCredential",
+        "FacebookAuthProvider.getCredential",
+        "signInWithCredential",
+    ):
+        if _lg_need not in _lg_repo:
+            errors.append(
+                f"FirebaseAuthRepository.kt: {_lg_need} wajib ada — "
+                "masuk kedua provider lewat Firebase Auth (v2.0.12 #2)"
+            )
+    if "clearAuth()" not in _lg_repo or "clearEcchi()" not in _lg_repo:
+        errors.append(
+            "FirebaseAuthRepository.kt: signOut() wajib memanggil "
+            "clearAuth() + clearEcchi() (v2.0.12 #2)"
+        )
+    # Literal persis "not_configured" (dengan kutip) — pesan Stub.
+    # "facebook_not_configured" TIDAK BOLEH ikut kena (substring).
+    if '"not_configured"' in _lg_repo:
+        errors.append(
+            "FirebaseAuthRepository.kt: TIDAK BOLEH mengembalikan "
+            "'not_configured' — itu hanya milik Stub (v2.0.12 #2)"
+        )
+    for _lg_bad in ("Log.d", "Log.i", "Log.w", "Log.e", "println("):
+        if _lg_bad in _lg_repo:
+            errors.append(
+                f"FirebaseAuthRepository.kt: {_lg_bad} DILARANG — token "
+                "login tidak boleh ditulis ke log (v2.0.12 #2)"
+            )
+
+# 23d. String login_belum_tersedia TIDAK LAGI dipakai di jalur masuk
+#      aktif (hanya boleh tersisa definisinya di strings.xml sebagai
+#      resource tak terpakai; di Kotlin = 0).
+_lg_belum_count = 0
+for _lg_kt in (ROOT / "app" / "src").rglob("*.kt"):
+    if "login_belum_tersedia" in _lg_kt.read_text(encoding="utf-8", errors="replace"):
+        _lg_belum_count += 1
+if _lg_belum_count:
+    errors.append(
+        "login_belum_tersedia masih dipakai di Kotlin — string 'Masuk "
+        "belum tersedia' TIDAK BOLEH muncul lagi setelah Firebase "
+        "dipasang (v2.0.12 #2)"
+    )
+
+# 23e. Gerbang Ecchi TIDAK berubah: DetailActivity TIDAK disentuh
+#      (diff kosong vs basis 6e908f6) dan gerbangnya tetap memeriksa
+#      isSignedIn() + ecchiEnabled == "1"; SettingActivity hanya
+#      menyimpan ecchiEnabled bila sudah login.
+_lg_detail_diff = _lg_no_diff(
+    ["app/src/main/java/animelovers/rebornhd/ui/detail/DetailActivity.kt"],
+)
+if _lg_detail_diff is False:
+    errors.append(
+        "DetailActivity.kt berubah terhadap basis 6e908f6 — gerbang "
+        "Ecchi TIDAK BOLEH disentuh di v2.0.12 (PRD §B3)"
+    )
+elif _lg_detail_diff is None:
+    warnings.append(
+        "verify.py §23e: git diff gagal — tidak bisa memastikan "
+        "DetailActivity.kt tidak disentuh"
+    )
+_lg_detail = _lg_detail_path.read_text(encoding="utf-8")
+if "isSignedIn()" not in _lg_detail or 'ecchiEnabled == "1"' not in _lg_detail:
+    errors.append(
+        "DetailActivity.kt: gerbang Ecchi wajib tetap memeriksa "
+        "isSignedIn() + ecchiEnabled == \"1\" (v2.0.12 #3)"
+    )
+_lg_setting = _lg_setting_path.read_text(encoding="utf-8")
+if "if (app().authRepository.isSignedIn())" not in _lg_setting:
+    errors.append(
+        "SettingActivity.kt: saveAndFinish hanya boleh menyimpan "
+        "ecchiEnabled bila sudah login (v2.0.12 #3)"
+    )
+
+# 23f. Binding aktif = FirebaseAuthRepository (satu baris di
+#      AnimeloversApp.kt); Stub TIDAK BOLEH lagi direferensikan.
+_lg_app = _lg_app_path.read_text(encoding="utf-8")
+if "StubAuthRepository" in _lg_app:
+    errors.append(
+        "AnimeloversApp.kt: StubAuthRepository TIDAK BOLEH lagi "
+        "direferensikan — binding aktif wajib Firebase (v2.0.12 #4)"
+    )
+if _lg_app.count("FirebaseAuthRepository(this)") != 1:
+    errors.append(
+        "AnimeloversApp.kt: binding wajib tepat satu baris "
+        "'FirebaseAuthRepository(this)' (v2.0.12 #4)"
+    )
+
+# 23g. Manifest Facebook: meta-data ApplicationId + string resource
+#      facebook_app_id; TIDAK ADA string App Secret di app/src.
+_lg_manifest = _lg_manifest_path.read_text(encoding="utf-8")
+if "com.facebook.sdk.ApplicationId" not in _lg_manifest:
+    errors.append(
+        "AndroidManifest.xml: meta-data com.facebook.sdk.ApplicationId "
+        "wajib ada (v2.0.12 #5)"
+    )
+if "@string/facebook_app_id" not in _lg_manifest:
+    errors.append(
+        "AndroidManifest.xml: App ID Facebook wajib sebagai string "
+        "resource @string/facebook_app_id (v2.0.12 #5)"
+    )
+if "facebook_app_id" not in _strings_xml:
+    errors.append(
+        "strings.xml: string facebook_app_id wajib ada (v2.0.12 #5)"
+    )
+elif 'name="facebook_app_id">0<' in _strings_xml:
+    warnings.append(
+        "verify.py §23g: facebook_app_id masih placeholder '0' — login "
+        "Facebook gagal dengan pesan jujur sampai App ID asli (A3) "
+        "dimasukkan; BUKAN error, tapi dicatat"
+    )
+for _lg_src_file in (ROOT / "app" / "src").rglob("*"):
+    if _lg_src_file.suffix not in (".kt", ".xml"):
+        continue
+    if "app_secret" in _lg_src_file.read_text(
+        encoding="utf-8", errors="replace",
+    ).lower():
+        errors.append(
+            f"{_lg_src_file.name}: mengandung 'app_secret' — App Secret "
+            "Facebook TIDAK PERNAH boleh masuk repo (v2.0.12 #5)"
+        )
+
+# 23h. refreshLoginUi membaca sesi dari repository (bukan hardcode
+#      profil): isSignedIn() + userEmail() + userPhotoUrl().
+for _lg_read in ("auth.isSignedIn()", "auth.userEmail()", "auth.userPhotoUrl()"):
+    if _lg_read not in _lg_setting:
+        errors.append(
+            f"SettingActivity.kt: refreshLoginUi() wajib membaca "
+            f"{_lg_read} dari repository (v2.0.12 #6)"
+        )
+
+# 23i. Sesi TIDAK BOLEH dihapus di jalur start aplikasi — tidak ada
+#      signOut()/clearAuth() di AnimeloversApp/Splash/MainActivity.
+for _lg_name, _lg_path in (
+    ("AnimeloversApp", _lg_app_path),
+    ("SplashActivity", JAVA / "animelovers" / "rebornhd" / "ui" / "splash" / "SplashActivity.kt"),
+    ("MainActivity", JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "MainActivity.kt"),
+):
+    _lg_text = _lg_path.read_text(encoding="utf-8")
+    for _lg_call in ("signOut()", "clearAuth()"):
+        if _lg_call in _lg_text:
+            errors.append(
+                f"{_lg_name}: {_lg_call} DILARANG di jalur start — sesi "
+                "masuk wajib bertahan setelah restart (v2.0.12 #7)"
+            )
+
+# 23j. (a) Jalur kill switch TIDAK BERUBAH terhadap v2.0.11
+#      (diff kosong vs basis 6e908f6); (b) larangan abadi "Video
+#      tidak tersedia" = 0 (re-assert §22h).
+_lg_ks_diff = _lg_no_diff(
+    [
+        "app/src/main/java/animelovers/rebornhd/util/KillSwitch.kt",
+        "app/src/main/java/animelovers/rebornhd/util/KillSwitchLogic.kt",
+    ],
+)
+if _lg_ks_diff is False:
+    errors.append(
+        "KillSwitch.kt / KillSwitchLogic.kt berubah terhadap basis "
+        "6e908f6 — jalur saklar TIDAK BOLEH disentuh di v2.0.12 "
+        "(PRD §B8)"
+    )
+elif _lg_ks_diff is None:
+    warnings.append(
+        "verify.py §23j: git diff gagal — tidak bisa memastikan jalur "
+        "kill switch tidak berubah"
+    )
+_lg_all_kt = ""
+for _lg_kt in (ROOT / "app" / "src").rglob("*.kt"):
+    _lg_all_kt += _lg_kt.read_text(encoding="utf-8", errors="replace") + "\n"
+if "Video tidak tersedia" in _lg_all_kt or "Video tidak tersedia" in _strings_xml:
+    errors.append(
+        'String "Video tidak tersedia" DILARANG SELAMANYA — bukan solusi '
+        "(v2.0.12, keputusan Faygo)"
+    )
+
+# 23k. Guard R8 utuh (re-assert): keepattributes Signature +
+#      keep TypeToken + TypeToken.getParameterized di kode; bila
+#      proguard-rules.pro berubah, tambahannya HANYA boleh baris
+#      -keep / komentar / kosong (keep yang didokumentasikan).
+_lg_proguard_path = ROOT / "app" / "proguard-rules.pro"
+_lg_proguard = _lg_proguard_path.read_text(encoding="utf-8")
+for _lg_keep in ("-keepattributes Signature", "TypeToken"):
+    if _lg_keep not in _lg_proguard:
+        errors.append(
+            f"proguard-rules.pro: guard R8 ({_lg_keep}) wajib ada "
+            "(v2.0.12 #9)"
+        )
+if "getParameterized" not in _lg_all_kt:
+    errors.append(
+        "TypeToken.getParameterized wajib dipakai di kode — guard R8 "
+        "v2.0.4 tidak boleh hilang (v2.0.12 #9)"
+    )
+try:
+    _lg_pg = subprocess.run(
+        ["git", "-C", str(ROOT), "diff", "6e908f6", "--", "app/proguard-rules.pro"],
+        capture_output=True, text=True, timeout=15,
+    )
+    if _lg_pg.returncode == 0 and _lg_pg.stdout.strip():
+        for _lg_line in _lg_pg.stdout.splitlines():
+            if not _lg_line.startswith("+"):
+                continue
+            _lg_added = _lg_line[1:].strip()
+            if _lg_added.startswith(("+++", "-keep", "#")) or not _lg_added:
+                continue
+            errors.append(
+                "proguard-rules.pro berubah dengan baris bukan -keep — "
+                "perubahan guard R8 wajib hanya keep rules yang "
+                f"didokumentasikan (baris: {_lg_added[:60]!r}, v2.0.12 #9)"
+            )
+            break
+    elif _lg_pg.returncode != 0:
+        warnings.append(
+            "verify.py §23k: git diff gagal — tidak bisa memastikan "
+            "proguard-rules.pro tidak berubah"
+        )
+except Exception:
+    warnings.append(
+        "verify.py §23k: git tidak bisa dijalankan — tidak bisa "
+        "memastikan proguard-rules.pro tidak berubah"
+    )
+
+# 23l. Semua R.string.* yang dipakai di Kotlin wajib terdefinisi di
+#      strings.xml — satu nama hilang = build rilis GAGAL. (Pelajaran
+#      saat menulis v2.0.12: `login_dibatalkan` sempat dikira dipakai
+#      SettingActivity, padahal cabang batalnya SENGAJA tanpa toast —
+#      gerbang ini memastikan yang BENAR-BENAR dipakai semuanya ada.)
+_lg_defined_strings = set(
+    re.findall(r'name="([^"]+)"', _strings_xml),
+)
+_lg_missing_strings = set()
+for _lg_kt in (ROOT / "app" / "src").rglob("*.kt"):
+    _lg_kt_text = _lg_kt.read_text(encoding="utf-8", errors="replace")
+    for _lg_ref in re.findall(r"R\.string\.([A-Za-z0-9_]+)", _lg_kt_text):
+        if _lg_ref not in _lg_defined_strings:
+            _lg_missing_strings.add(_lg_ref)
+for _lg_missing in sorted(_lg_missing_strings):
+    errors.append(
+        f"R.string.{_lg_missing} dipakai di Kotlin tapi TIDAK ADA di "
+        "strings.xml — build rilis akan gagal (v2.0.12 #6)"
+    )
 
 # ---------- Laporan ----------
 

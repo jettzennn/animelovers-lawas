@@ -106,6 +106,10 @@
     <string name="menu_tampilan">Tampilan daftar</string>
     <string name="login_gagal">Masuk gagal. Coba lagi.</string>
     <string name="sudah_keluar">Kamu sudah keluar.</string>
+    <!-- v2.0.12: App ID Facebook (langkah A3) — "0" = placeholder, BELUM
+         DIISI. Ganti dengan App ID asli dari Facebook Developer; JANGAN
+         pernah menulis App Secret di sini/di mana pun. -->
+    <string name="facebook_app_id">1886546182556504</string>
 
     <!-- Konsol Diagnostik (v2.0.9) -->
     <string name="konsol_judul">Konsol</string>

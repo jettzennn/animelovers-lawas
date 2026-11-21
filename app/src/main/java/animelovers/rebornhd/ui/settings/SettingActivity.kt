@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
+import animelovers.rebornhd.data.auth.LoginCancelledException
 import animelovers.rebornhd.databinding.ActivitySettingBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.console.ConsoleActivity
@@ -26,9 +27,10 @@ import kotlinx.coroutines.launch
  * sistem HP (Prefs.isDarkTheme dibaca dari uiMode sistem). Pengaturan
  * hanya menampilkan baris statis "Tema mengikuti sistem HP".
  *
- * Login: tombol FB/Google memanggil AuthRepository. Selama Firebase belum
- * dipasang (StubAuthRepository), ketukan menampilkan pesan jujur
- * "Masuk belum tersedia…" — gerbang Ecchi tetap terkunci, tanpa crash.
+ * Login: tombol FB/Google memanggil AuthRepository (v2.0.12:
+ * FirebaseAuthRepository — masuk sungguhan via Firebase Auth).
+ * Hasil masuk diteruskan lewat onActivityResult; bila pengguna
+ * membatalkan sendiri, aplikasi diam saja (tetap tamu, tanpa toast).
  * "Beri Rating" → repo GitHub (PRD §12 poin 9).
  */
 class SettingActivity : BaseActivity() {
@@ -106,18 +108,25 @@ class SettingActivity : BaseActivity() {
         outState.putBoolean(KEY_ECCHI, pendingEcchi)
     }
 
+    // v2.0.12: hasil alur masuk (Google intent + Facebook CallbackManager)
+    // diteruskan ke repository — tanpa ini, hasil masuk tidak pernah sampai.
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (app().authRepository.onActivityResult(requestCode, resultCode, data)) return
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     private fun signIn(facebook: Boolean) {
         lifecycleScope.launch {
             val result = if (facebook) {
-                app().authRepository.signInFacebook()
+                app().authRepository.signInFacebook(this@SettingActivity)
             } else {
-                app().authRepository.signInGoogle()
+                app().authRepository.signInGoogle(this@SettingActivity)
             }
             result
                 .onSuccess { refreshLoginUi() }
                 .onFailure { error ->
-                    if (error.message == "not_configured") {
-                        toast(getString(R.string.login_belum_tersedia))
+                    if (error is LoginCancelledException) {
+                        // Dibatalkan pengguna — tetap tamu, tanpa toast.
                     } else {
                         toast(getString(R.string.login_gagal))
                     }

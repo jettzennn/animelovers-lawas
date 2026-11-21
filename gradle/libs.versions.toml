@@ -22,6 +22,9 @@ shimmer = "0.5.0"
 # v2.0.11: saklar jarak jauh (Firebase Remote Config + Installations).
 google-services = "4.4.0"
 firebase-bom = "32.7.0"
+# v2.0.12: login berfungsi (Firebase Auth + Google Sign-In + Facebook SDK).
+play-services-auth = "20.7.0"
+facebook-login = "16.3.0"
 
 [libraries]
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
@@ -50,6 +53,11 @@ shimmer = { group = "com.facebook.shimmer", name = "shimmer", version.ref = "shi
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
 firebase-config-ktx = { group = "com.google.firebase", name = "firebase-config-ktx" }
 firebase-installations-ktx = { group = "com.google.firebase", name = "firebase-installations-ktx" }
+# v2.0.12: login berfungsi — firebase-auth-ktx dikelola BOM (tanpa version.ref);
+# play-services-auth + facebook-login dipatok versinya (PRD §B1).
+firebase-auth-ktx = { group = "com.google.firebase", name = "firebase-auth-ktx" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "play-services-auth" }
+facebook-login = { group = "com.facebook.android", name = "facebook-login", version.ref = "facebook-login" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
