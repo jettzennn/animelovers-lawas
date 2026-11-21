@@ -15,6 +15,8 @@ import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.main.browse.BrowseFragment
 import animelovers.rebornhd.ui.main.history.HistoryFragment
 import animelovers.rebornhd.ui.main.home.HomeFragment
+import animelovers.rebornhd.util.DiagError
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.KillSwitchLogic
 import animelovers.rebornhd.util.toast
@@ -49,10 +51,28 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    /** Gerbang Ecchi terbuka bila sudah login DAN toggle Ecchi aktif. */
+    /**
+     * Gerbang Ecchi terbuka bila sudah login DAN toggle Ecchi aktif.
+     *
+     * v2.0.13 (fail-safe — crash startup v2.0.12): fungsi ini TIDAK
+     * BOLEH melempar, dalam keadaan apa pun. Konstruksi lazy
+     * `authRepository` bisa gagal (mis. SDK Facebook belum ter-init)
+     * dan lazy Kotlin yang gagal konstruksi akan melempar LAGI di
+     * setiap akses berikutnya — jadi penjagaan harus di TIAP
+     * pemanggilan, bukan sekali di awal aplikasi. Bila akses auth
+     * melempar apa pun → kembalikan false (anggap tamu → judul Ecchi
+     * terkunci seperti perilaku tamu biasa) + satu baris log
+     * diagnostik. Token TIDAK PERNAH ditulis ke log.
+     */
     fun isEcchiUnlocked(): Boolean {
-        val auth = app().authRepository
-        return auth.isSignedIn() && prefs.ecchiEnabled == "1"
+        return runCatching { app().authRepository.isSignedIn() }
+            .onFailure { e ->
+                app().diagLogger.warn(
+                    DiagLog.TAG_APP,
+                    "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                )
+            }
+            .getOrDefault(false) && prefs.ecchiEnabled == "1"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

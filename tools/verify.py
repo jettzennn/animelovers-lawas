@@ -582,10 +582,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12")
-if '"2.0.12"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.12"')
+if not re.search(r"versionCode\s*=\s*18\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 18 untuk v2.0.13")
+if '"2.0.13"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.13"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -1439,13 +1439,13 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*18\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12"
+        "app/build.gradle.kts: versionCode wajib 18 untuk v2.0.13"
     )
-if '"2.0.12"' not in _app_gradle:
+if '"2.0.13"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib "2.0.12"'
+        'app/build.gradle.kts: versionName wajib "2.0.13"'
     )
 
 # 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
@@ -1958,12 +1958,12 @@ for _h in ("versionName", "Build.MODEL", "Build.VERSION.RELEASE"):
             "(v2.0.9 item 7)"
         )
 
-# 20h. Versi: §13d + §18o naik ke 17 / "2.0.12" (re-assert — gerbang
+# 20h. Versi: §13d + §18o naik ke 18 / "2.0.13" (re-assert — gerbang
 #      versi harus lolos SETELAH bump; pola v2.0.8: §13d ikut naik).
-if not re.search(r"versionCode\s*=\s*17\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 17 untuk v2.0.12")
-if '"2.0.12"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.12"')
+if not re.search(r"versionCode\s*=\s*18\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 18 untuk v2.0.13")
+if '"2.0.13"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.13"')
 
 # 20i (DIPERKUAT v2.0.10 — O-3 Cari Bug v2.0.9): cek pada teks yang
 #      sudah dibuang string/komentarnya (strip_kotlin) — baris yang
@@ -2391,7 +2391,7 @@ try:
 except Exception:
     warnings.append("verify.py §22b: git tidak bisa dijalankan — tidak bisa memastikan google-services.json tidak terindeks")
 
-# 22c. (DIPERBARUI v2.0.12) Gradle: versionCode 17 / "2.0.12";
+# 22c. (DIPERBARUI v2.0.13) Gradle: versionCode 18 / "2.0.13";
 #      BOM 32.7.0 + config-ktx + installations-ktx + auth-ktx +
 #      play-services-auth + facebook-login; plugin google-services
 #      4.4.0. Larangan v2.0.11 atas firebase-auth/play-services-auth/
@@ -2400,10 +2400,10 @@ except Exception:
 _ks_app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
 _ks_root_gradle = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
 _ks_toml = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
-if "versionCode = 17" not in _ks_app_gradle:
-    errors.append("app/build.gradle.kts: versionCode wajib 17 (v2.0.12)")
-if 'versionName = "2.0.12"' not in _ks_app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.12" (v2.0.12)')
+if "versionCode = 18" not in _ks_app_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 18 (v2.0.13)")
+if 'versionName = "2.0.13"' not in _ks_app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.13" (v2.0.13)')
 for _ks_dep in (
     "firebase.bom",
     "firebase.config.ktx",
@@ -2736,12 +2736,12 @@ if '"32.7.0"' not in _lg_toml:
         "(v2.0.12 #1)"
     )
 
-# 23b. Versi 17 / "2.0.12" (re-assert §22c — gerbang versi harus
+# 23b. Versi 18 / "2.0.13" (re-assert §22c — gerbang versi harus
 #      lolos SETELAH bump).
-if "versionCode = 17" not in _lg_gradle:
-    errors.append("app/build.gradle.kts: versionCode wajib 17 (v2.0.12)")
-if 'versionName = "2.0.12"' not in _lg_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.12" (v2.0.12)')
+if "versionCode = 18" not in _lg_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 18 (v2.0.13)")
+if 'versionName = "2.0.13"' not in _lg_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.13" (v2.0.13)')
 
 # 23c. FirebaseAuthRepository: signInWithCredential untuk kedua
 #      provider (Google + Facebook) + signOut membersihkan Prefs
@@ -2796,34 +2796,30 @@ if _lg_belum_count:
         "dipasang (v2.0.12 #2)"
     )
 
-# 23e. Gerbang Ecchi TIDAK berubah: DetailActivity TIDAK disentuh
-#      (diff kosong vs basis 6e908f6) dan gerbangnya tetap memeriksa
-#      isSignedIn() + ecchiEnabled == "1"; SettingActivity hanya
-#      menyimpan ecchiEnabled bila sudah login.
-_lg_detail_diff = _lg_no_diff(
-    ["app/src/main/java/animelovers/rebornhd/ui/detail/DetailActivity.kt"],
-)
-if _lg_detail_diff is False:
-    errors.append(
-        "DetailActivity.kt berubah terhadap basis 6e908f6 — gerbang "
-        "Ecchi TIDAK BOLEH disentuh di v2.0.12 (PRD §B3)"
-    )
-elif _lg_detail_diff is None:
-    warnings.append(
-        "verify.py §23e: git diff gagal — tidak bisa memastikan "
-        "DetailActivity.kt tidak disentuh"
-    )
+# 23e. (DIPERBARUI v2.0.13) Gerbang Ecchi: aturan v2.0.12
+#      "DetailActivity TIDAK disentuh" DICABUT oleh PRD v2.0.13 item 2
+#      (fail-safe) — DetailActivity BOLEH berubah, TAPI gerbangnya
+#      tetap memeriksa isSignedIn() + ecchiEnabled == "1" dan akses
+#      auth-nya wajib terjaga runCatching (gagal init → tamu, bukan
+#      crash). SettingActivity tetap hanya menyimpan ecchiEnabled bila
+#      sudah login (kini lewat baca fail-safe).
 _lg_detail = _lg_detail_path.read_text(encoding="utf-8")
 if "isSignedIn()" not in _lg_detail or 'ecchiEnabled == "1"' not in _lg_detail:
     errors.append(
         "DetailActivity.kt: gerbang Ecchi wajib tetap memeriksa "
-        "isSignedIn() + ecchiEnabled == \"1\" (v2.0.12 #3)"
+        "isSignedIn() + ecchiEnabled == \"1\" (v2.0.12 #3, v2.0.13 #2)"
+    )
+if "runCatching { app().authRepository.isSignedIn() }" not in _lg_detail:
+    errors.append(
+        "DetailActivity.kt: akses auth gerbang Ecchi wajib terjaga "
+        "runCatching — gagal init auth harus jadi tamu, bukan crash "
+        "(v2.0.13 #2)"
     )
 _lg_setting = _lg_setting_path.read_text(encoding="utf-8")
-if "if (app().authRepository.isSignedIn())" not in _lg_setting:
+if "isSignedIn() == true" not in _lg_setting:
     errors.append(
         "SettingActivity.kt: saveAndFinish hanya boleh menyimpan "
-        "ecchiEnabled bila sudah login (v2.0.12 #3)"
+        "ecchiEnabled bila sudah login (v2.0.12 #3, v2.0.13 #2)"
     )
 
 # 23f. Binding aktif = FirebaseAuthRepository (satu baris di
@@ -2992,6 +2988,135 @@ for _lg_missing in sorted(_lg_missing_strings):
         f"R.string.{_lg_missing} dipakai di Kotlin tapi TIDAK ADA di "
         "strings.xml — build rilis akan gagal (v2.0.12 #6)"
     )
+
+# ---------- v2.0.13 (perbaikan crash startup: Client Token + hardening) ----------
+
+# 24a. Client Token Facebook terisi nilai asli (PRD §B1): meta-data
+#      com.facebook.sdk.ClientToken ada di manifest + string
+#      facebook_client_token ada di strings.xml + nilainya BUKAN
+#      placeholder/kosong — pola + panjang minimum (bukan menghafal
+#      nilai): minimal 16 karakter heksadesimal. Nilai asli dari A1
+#      (Client Token — dirancang untuk kode klien, seperti App ID).
+#      Gerbang ini SENGAJA GAGAL selama token TBD (string kosong /
+#      placeholder) — Deploy berhenti sampai token asli diisi.
+if "com.facebook.sdk.ClientToken" not in _lg_manifest:
+    errors.append(
+        "AndroidManifest.xml: meta-data com.facebook.sdk.ClientToken "
+        "wajib ada (v2.0.13 #1)"
+    )
+if "@string/facebook_client_token" not in _lg_manifest:
+    errors.append(
+        "AndroidManifest.xml: Client Token Facebook wajib sebagai string "
+        "resource @string/facebook_client_token (v2.0.13 #1)"
+    )
+_lg_token_match = re.search(
+    r'name="facebook_client_token">([^<]*)<', _strings_xml,
+)
+if not _lg_token_match:
+    errors.append(
+        "strings.xml: string facebook_client_token wajib ada (v2.0.13 #1)"
+    )
+else:
+    _lg_token = _lg_token_match.group(1).strip()
+    if (
+        not _lg_token
+        or _lg_token in ("TBD", "TODO", "PLACEHOLDER", "ISI_TOKEN", "0")
+        or not re.fullmatch(r"[0-9a-fA-F]{16,}", _lg_token)
+    ):
+        errors.append(
+            "strings.xml: facebook_client_token wajib terisi nilai asli "
+            "dari A1 (minimal 16 karakter heksadesimal) — placeholder "
+            "TBD/kosong TIDAK BOLEH lolos; Deploy berhenti sampai token "
+            "asli diisi (v2.0.13 #1)"
+        )
+
+# 24b. isEcchiUnlocked() fail-safe (PRD §B2): mengandung penanganan
+#      exception (try/catch atau runCatching) di sekitar akses
+#      authRepository dan mengembalikan false bila akses gagal; DAN
+#      tidak ada lagi akses authRepository tanpa penjagaan di jalur
+#      bind pertama Beranda (HomeFragment.applyData hanya memanggil
+#      isEcchiUnlocked(), tidak menyentuh authRepository langsung).
+_lg_main_path = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "MainActivity.kt"
+)
+_lg_main_kt = _lg_main_path.read_text(encoding="utf-8")
+_lg_unlocked = re.search(
+    r"fun isEcchiUnlocked\(\)[^{]*\{(.*?)\n    \}",
+    _lg_main_kt, re.DOTALL,
+)
+if _lg_unlocked is None:
+    errors.append(
+        "MainActivity.kt: isEcchiUnlocked() tidak ditemukan (v2.0.13 #2)"
+    )
+else:
+    _lg_body = _lg_unlocked.group(1)
+    if "authRepository" not in _lg_body:
+        errors.append(
+            "MainActivity.kt: isEcchiUnlocked() wajib membaca "
+            "authRepository (v2.0.13 #2)"
+        )
+    if "runCatching" not in _lg_body and "try {" not in _lg_body:
+        errors.append(
+            "MainActivity.kt: isEcchiUnlocked() wajib mengandung "
+            "penanganan exception (runCatching/try) di sekitar akses "
+            "authRepository — gagal init auth harus jadi tamu, bukan "
+            "crash (v2.0.13 #2)"
+        )
+    if "getOrDefault(false)" not in _lg_body:
+        errors.append(
+            "MainActivity.kt: isEcchiUnlocked() wajib mengembalikan "
+            "false bila akses auth gagal (v2.0.13 #2)"
+        )
+_lg_home_path = (
+    JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "home"
+    / "HomeFragment.kt"
+)
+_lg_home_kt = _lg_home_path.read_text(encoding="utf-8")
+if "authRepository" in _lg_home_kt:
+    errors.append(
+        "HomeFragment.kt: jalur bind Beranda TIDAK BOLEH menyentuh "
+        "authRepository langsung — hanya lewat isEcchiUnlocked() yang "
+        "terjaga (v2.0.13 #2)"
+    )
+if "isEcchiUnlocked()" not in _lg_home_kt:
+    errors.append(
+        "HomeFragment.kt: bind Beranda wajib memakai isEcchiUnlocked() "
+        "(v2.0.13 #2)"
+    )
+
+# 24c. Versi 18 / "2.0.13".
+if "versionCode = 18" not in _lg_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 18 (v2.0.13)")
+if 'versionName = "2.0.13"' not in _lg_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.13" (v2.0.13)')
+
+# 24d. (a) App Secret TIDAK ada di repo (re-assert §23g); (b) token di
+#      strings.xml BUKAN App ID (pemeriksaan kewarasan — token dan App
+#      ID adalah nilai berbeda). Perbandingan penuh token-vs-Secret
+#      adalah gerbang Orkestrator/Deploy, bukan grep (Frontend tidak
+#      memegang Secret).
+for _lg_src_file in (ROOT / "app" / "src").rglob("*"):
+    if _lg_src_file.suffix not in (".kt", ".xml"):
+        continue
+    if "app_secret" in _lg_src_file.read_text(
+        encoding="utf-8", errors="replace",
+    ).lower():
+        errors.append(
+            f"{_lg_src_file.name}: mengandung 'app_secret' — App Secret "
+            "Facebook TIDAK PERNAH boleh masuk repo (v2.0.13 §24d)"
+        )
+_lg_app_id_match = re.search(
+    r'name="facebook_app_id">([^<]*)<', _strings_xml,
+)
+if _lg_token_match and _lg_app_id_match:
+    if (
+        _lg_token_match.group(1).strip()
+        == _lg_app_id_match.group(1).strip()
+    ):
+        errors.append(
+            "strings.xml: facebook_client_token TIDAK BOLEH sama dengan "
+            "facebook_app_id — keduanya nilai berbeda (v2.0.13 §24d)"
+        )
 
 # ---------- Laporan ----------
 

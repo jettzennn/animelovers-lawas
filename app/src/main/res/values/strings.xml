@@ -106,10 +106,13 @@
     <string name="menu_tampilan">Tampilan daftar</string>
     <string name="login_gagal">Masuk gagal. Coba lagi.</string>
     <string name="sudah_keluar">Kamu sudah keluar.</string>
-    <!-- v2.0.12: App ID Facebook (langkah A3) — "0" = placeholder, BELUM
-         DIISI. Ganti dengan App ID asli dari Facebook Developer; JANGAN
-         pernah menulis App Secret di sini/di mana pun. -->
+    <!-- v2.0.12: App ID Facebook (langkah A3 SELESAI — nilai asli sudah
+         terisi). v2.0.13: Client Token di bawah (langkah A1) — nilai
+         klien yang dirancang disematkan di kode, seperti App ID;
+         BUKAN App Secret — App Secret TIDAK PERNAH ditulis di sini/
+         di mana pun. -->
     <string name="facebook_app_id">1886546182556504</string>
+    <string name="facebook_client_token">f8f6fec2f25f2d06f0ef269314e348c8</string>
 
     <!-- Konsol Diagnostik (v2.0.9) -->
     <string name="konsol_judul">Konsol</string>

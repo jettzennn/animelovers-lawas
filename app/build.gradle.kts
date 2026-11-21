@@ -22,8 +22,8 @@ android {
         targetSdk = 34
         // ATURAN TETAP: setiap rilis baru WAJIB menaikkan versionName (sama dengan tag GitHub)
         // dan versionCode (+1) — halaman Info aplikasi Android menampilkan versionName ini.
-        versionCode = 17
-        versionName = "2.0.12"
+        versionCode = 18
+        versionName = "2.0.13"
     }
 
     buildTypes {

@@ -16,6 +16,8 @@ import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
@@ -98,11 +100,19 @@ class EpisodeActivity : BaseActivity() {
                 // Gerbang Ecchi (kunci ketiganya — Ecchi + Erotica + Hentai):
                 // halaman ini tidak dibuka dari Detail yang terkunci — tapi
                 // tetap tutup bila gerbang belum terbuka.
+                // v2.0.13 (fail-safe): akses auth yang melempar → anggap
+                // tamu (judul terkunci), BUKAN crash.
                 val ecchi = data.genreSlugs.any { genre ->
                     Constants.LOCKED_GENRES.any { it.equals(genre, ignoreCase = true) }
                 }
-                val unlocked = app().authRepository.isSignedIn() &&
-                    prefs.ecchiEnabled == "1"
+                val unlocked = runCatching { app().authRepository.isSignedIn() }
+                    .onFailure { e ->
+                        app().diagLogger.warn(
+                            DiagLog.TAG_APP,
+                            "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                        )
+                    }
+                    .getOrDefault(false) && prefs.ecchiEnabled == "1"
                 if (ecchi && !unlocked) {
                     toast(getString(R.string.ecchi_perlu_login))
                     finish()

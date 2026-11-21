@@ -6,14 +6,18 @@ import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
+import animelovers.rebornhd.data.auth.AuthRepository
 import animelovers.rebornhd.data.auth.LoginCancelledException
 import animelovers.rebornhd.databinding.ActivitySettingBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.console.ConsoleActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import coil.load
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -72,7 +76,10 @@ class SettingActivity : BaseActivity() {
             pendingWifi = isChecked
         }
         binding.ecchiSwitch.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked && !app().authRepository.isSignedIn()) {
+            // v2.0.13 (fail-safe): akses auth yang melempar → anggap
+            // tamu (switch kembali mati), BUKAN crash.
+            val signedIn = authOrNull()?.isSignedIn() ?: false
+            if (isChecked && !signedIn) {
                 // Belum login: kembalikan posisi switch + beri tahu
                 // (gerbang tetap aman — saveAndFinish juga membuangnya).
                 binding.ecchiSwitch.isChecked = false
@@ -110,17 +117,54 @@ class SettingActivity : BaseActivity() {
 
     // v2.0.12: hasil alur masuk (Google intent + Facebook CallbackManager)
     // diteruskan ke repository — tanpa ini, hasil masuk tidak pernah sampai.
+    // v2.0.13 (fail-safe): konstruksi auth yang melempar → lewatkan ke
+    // super (bukan urusan login), BUKAN crash.
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (app().authRepository.onActivityResult(requestCode, resultCode, data)) return
+        val handled = runCatching {
+            app().authRepository.onActivityResult(requestCode, resultCode, data)
+        }
+            .onFailure { e ->
+                app().diagLogger.warn(
+                    DiagLog.TAG_APP,
+                    "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                )
+            }
+            .getOrDefault(false)
+        if (handled) return
         super.onActivityResult(requestCode, resultCode, data)
     }
 
+    /**
+     * Ambil repository login dengan fail-safe (v2.0.13 — crash startup
+     * v2.0.12): konstruksi lazy `authRepository` bisa melempar (mis. SDK
+     * Facebook belum ter-init) dan lazy yang gagal akan melempar LAGI di
+     * tiap akses — jadi TIAP pemakaian di Activity ini lewat sini dan
+     * menerima null sebagai "tamu". Kegagalan dicatat satu baris log
+     * diagnostik; token TIDAK PERNAH ditulis ke log.
+     */
+    private fun authOrNull(): AuthRepository? =
+        runCatching { app().authRepository }
+            .onFailure { e ->
+                app().diagLogger.warn(
+                    DiagLog.TAG_APP,
+                    "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                )
+            }
+            .getOrNull()
+
     private fun signIn(facebook: Boolean) {
         lifecycleScope.launch {
-            val result = if (facebook) {
-                app().authRepository.signInFacebook(this@SettingActivity)
+            // v2.0.13 (fail-safe): konstruksi auth yang gagal menjadi
+            // Result.failure → toast login_gagal (kontrak v2.0.12),
+            // BUKAN crash. Pengguna tetap bisa memakai aplikasi
+            // sebagai tamu dan mencoba masuk lagi dari Pengaturan.
+            val repo = authOrNull()
+            val result = if (repo == null) {
+                Result.failure(IllegalStateException("auth_init_failed"))
+            } else if (facebook) {
+                repo.signInFacebook(this@SettingActivity)
             } else {
-                app().authRepository.signInGoogle(this@SettingActivity)
+                repo.signInGoogle(this@SettingActivity)
             }
             result
                 .onSuccess { refreshLoginUi() }
@@ -136,7 +180,22 @@ class SettingActivity : BaseActivity() {
 
     private fun signOut() {
         lifecycleScope.launch {
-            app().authRepository.signOut()
+            // v2.0.13 (fail-safe): konstruksi auth yang gagal TIDAK
+            // BOLEH menggagalkan keluar — sesi lokal tetap dibersihkan
+            // (clearAuth + clearEcchi, sama seperti signOut() repository)
+            // dan UI kembali jadi tamu. CancellationException diteruskan.
+            try {
+                app().authRepository.signOut()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                app().diagLogger.warn(
+                    DiagLog.TAG_APP,
+                    "init auth gagal (${DiagError.describe(e)}) — keluar lokal saja",
+                )
+                prefs.clearAuth()
+                prefs.clearEcchi()
+            }
             pendingEcchi = false
             binding.ecchiSwitch.isChecked = false
             refreshLoginUi()
@@ -145,13 +204,13 @@ class SettingActivity : BaseActivity() {
     }
 
     private fun refreshLoginUi() {
-        val auth = app().authRepository
-        val signedIn = auth.isSignedIn()
+        val auth = authOrNull()
+        val signedIn = if (auth != null) auth.isSignedIn() else false
         binding.linearFbLogin.visibility =
             if (signedIn) android.view.View.GONE else android.view.View.VISIBLE
         binding.liniearFbDetail.visibility =
             if (signedIn) android.view.View.VISIBLE else android.view.View.GONE
-        if (signedIn) {
+        if (signedIn && auth != null) {
             binding.emailUser.text = auth.userEmail().ifBlank {
                 getString(R.string.email_placeholder)
             }
@@ -169,7 +228,9 @@ class SettingActivity : BaseActivity() {
     private fun saveAndFinish() {
         prefs.allNotif = if (pendingNotif) "1" else "0"
         prefs.wifiSwitch = if (pendingWifi) "1" else "0"
-        if (app().authRepository.isSignedIn()) {
+        // v2.0.13 (fail-safe): hanya simpan ecchiEnabled bila sudah
+        // login; akses auth yang melempar → anggap tamu (jangan simpan).
+        if (authOrNull()?.isSignedIn() == true) {
             prefs.ecchiEnabled = if (pendingEcchi) "1" else "0"
         }
         finish()

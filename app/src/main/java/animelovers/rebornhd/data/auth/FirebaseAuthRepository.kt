@@ -33,9 +33,13 @@ import kotlin.coroutines.resumeWithException
  *   setelah SHA-1 keystore rilis didaftarkan + file diunduh ulang,
  *   langkah A2). Bila belum ada, masuk Google gagal dengan pesan
  *   jujur (`login_gagal`) — BUKAN crash, BUKAN bug kode.
- * - Facebook: App ID asli di `R.string.facebook_app_id` (langkah A3).
- *   Selama nilainya masih placeholder `"0"`, masuk Facebook langsung
- *   gagal dengan pesan jujur tanpa menyentuh SDK.
+ * - Facebook: App ID asli di `R.string.facebook_app_id` (langkah A3)
+ *   + Client Token di `R.string.facebook_client_token` (langkah A1
+ *   v2.0.13, meta-data di manifest). Client Token WAJIB sejak SDK
+ *   13.2 — tanpanya auto-init SDK gagal dan sentuhan pertama ke
+ *   LoginManager melempar (crash startup v2.0.12). Selama App ID
+ *   masih placeholder `"0"`, masuk Facebook langsung gagal dengan
+ *   pesan jujur tanpa menyentuh SDK.
  *
  * Keamanan: token Google/Facebook TIDAK PERNAH ditulis ke log, file
  * log, atau Prefs — hanya email + URL foto + nama provider yang
@@ -52,9 +56,21 @@ class FirebaseAuthRepository(context: Context) : AuthRepository {
     private var pendingGoogle: CompletableDeferred<Pair<Int, Intent?>>? = null
     private var pendingFacebook: CompletableDeferred<LoginResult>? = null
 
-    init {
-        // Callback Facebook didaftarkan SEKALI di sini — LoginManager
-        // meneruskan hasilnya lewat CallbackManager di onActivityResult.
+    // v2.0.13 (seam hardening): callback Facebook TIDAK LAGI didaftarkan
+    // di konstruktor. Alasannya: LoginManager.getInstance() menyentuh
+    // Facebook SDK — bila SDK belum ter-init (mis. Client Token belum
+    // ada di manifest, crash startup v2.0.12), konstruktor melempar dan
+    // seluruh aplikasi mati saat Beranda pertama bertanya status login.
+    // Callback kini didaftarkan SEKALI di ensureFacebookCallback(),
+    // yang hanya dipanggil dari signInFacebook() — jalur eksplisit yang
+    // SUDAH mengembalikan Result.failure (bukan crash) bila SDK gagal.
+    // Perilaku login tidak berubah: callback tetap terdaftar SEBELUM
+    // logInWithReadPermissions dipanggil, dan onActivityResult tetap
+    // meneruskan hasil lewat CallbackManager yang sama.
+    private var facebookCallbackRegistered = false
+
+    private fun ensureFacebookCallback() {
+        if (facebookCallbackRegistered) return
         LoginManager.getInstance().registerCallback(
             callbackManager,
             object : FacebookCallback<LoginResult> {
@@ -74,6 +90,7 @@ class FirebaseAuthRepository(context: Context) : AuthRepository {
                 }
             },
         )
+        facebookCallbackRegistered = true
     }
 
     // ---------- Baca sesi (sumber kebenaran = Firebase) ----------
@@ -207,6 +224,7 @@ class FirebaseAuthRepository(context: Context) : AuthRepository {
             val deferred = CompletableDeferred<LoginResult>()
             pendingFacebook = deferred
             try {
+                ensureFacebookCallback()
                 LoginManager.getInstance().logInWithReadPermissions(
                     activity,
                     listOf("email", "public_profile"),

@@ -25,6 +25,8 @@ import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.ui.settings.SettingActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.KillEvaluation
 import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.toast
@@ -360,7 +362,7 @@ class DetailActivity : BaseActivity() {
         val locked = isLocked()
         binding.lock.visibility = if (locked) View.VISIBLE else View.GONE
         if (locked && showToast && detail != null) {
-            if (!app().authRepository.isSignedIn()) {
+            if (!isSignedInSafe()) {
                 toast(getString(R.string.ecchi_perlu_login))
             } else {
                 toast(getString(R.string.ecchi_belum_aktif))
@@ -368,13 +370,31 @@ class DetailActivity : BaseActivity() {
         }
     }
 
+    /**
+     * Baca status login dengan fail-safe (v2.0.13 — crash startup
+     * v2.0.12): bila konstruksi/pembacaan auth melempar apa pun,
+     * perlakukan sebagai tamu (false) + satu baris log diagnostik,
+     * BUKAN crash. Dipakai isLocked() + applyLock() — keduanya
+     * membaca lazy authRepository yang sama, jadi ikut kena bila
+     * konstruksi pernah gagal (perangkap lazy: gagal sekali =
+     * melempar lagi di tiap akses).
+     */
+    private fun isSignedInSafe(): Boolean =
+        runCatching { app().authRepository.isSignedIn() }
+            .onFailure { e ->
+                app().diagLogger.warn(
+                    DiagLog.TAG_APP,
+                    "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                )
+            }
+            .getOrDefault(false)
+
     private fun isLocked(): Boolean {
         val ecchi = genres.any { genre ->
             Constants.LOCKED_GENRES.any { it.equals(genre, ignoreCase = true) }
         }
         if (!ecchi) return false
-        val auth = app().authRepository
-        return !(auth.isSignedIn() && prefs.ecchiEnabled == "1")
+        return !(isSignedInSafe() && prefs.ecchiEnabled == "1")
     }
 
     private fun openPlayer(episode: Int) {

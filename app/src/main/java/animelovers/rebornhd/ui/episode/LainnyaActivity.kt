@@ -15,6 +15,8 @@ import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.DiagError
+import animelovers.rebornhd.util.DiagLog
 import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
@@ -94,8 +96,16 @@ class LainnyaActivity : BaseActivity() {
             try {
                 val repo = app().sankaRepository
                 val home = repo.home()
-                val unlocked = app().authRepository.isSignedIn() &&
-                    prefs.ecchiEnabled == "1"
+                // v2.0.13 (fail-safe): akses auth yang melempar → anggap
+                // tamu (judul Ecchi disaring), BUKAN crash.
+                val unlocked = runCatching { app().authRepository.isSignedIn() }
+                    .onFailure { e ->
+                        app().diagLogger.warn(
+                            DiagLog.TAG_APP,
+                            "init auth gagal (${DiagError.describe(e)}) — dianggap tamu",
+                        )
+                    }
+                    .getOrDefault(false) && prefs.ecchiEnabled == "1"
                 val items: List<SankaAnime> = if (mode == MODE_MOSTVIEW) {
                     // Terlaris: urutan server (popularWeekly) — jangan diurut
                     // ulang (Sanka tidak memberi skor; views hanya badge).
