@@ -1,7 +1,7 @@
 # Kontrak API — AnimLovers v2 (Sanka, hardsub)
 
 Satu-satunya API v2: **Sanka Vollerei** — scraper situs anime Indonesia
-(Animekompi). Tanpa key, gratis. Tidak ada lagi Anikoto, VidCloud,
+(Animekompi). Tanpa key, gratis. Tidak ada lagi VidCloud,
 MegaPlay, atau backend lokal. Subtitle **menempel di video (hardsub Sub
 Indo)** — tidak ada sistem subtitle sama sekali (tanpa VTT, tanpa
 translate, tanpa tracking).

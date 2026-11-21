@@ -103,6 +103,21 @@ class Prefs(context: Context) {
         get() = prefs.getString("auth_email", "") ?: ""
         set(value) = prefs.edit().putString("auth_email", value).apply()
 
+    /**
+     * v2.0.11: ID Instalasi Firebase perangkat ini (unik per install).
+     * Dipakai untuk pengecualian saklar jarak jauh — ID Faygo masuk
+     * daftar kill_exempt_ids di konsol. Nilai penuh TIDAK PERNAH
+     * ditulis ke log (hanya 8 karakter pertama).
+     */
+    var installationId: String
+        get() = prefs.getString("installation_id", "") ?: ""
+        set(value) = prefs.edit().putString("installation_id", value).apply()
+
+    /** v2.0.11: waktu (epoch ms) cek saklar terakhir — dasar aturan 15 menit. */
+    var killLastCheckMs: Long
+        get() = prefs.getLong("kill_last_check_ms", 0L)
+        set(value) = prefs.edit().putLong("kill_last_check_ms", value).apply()
+
     /** URL foto profil akun yang login — kosong bila tidak ada. */
     var authPhotoUrl: String
         get() = prefs.getString("auth_photo", "") ?: ""

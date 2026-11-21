@@ -3,8 +3,8 @@ package animelovers.rebornhd.data.model
 import com.google.gson.JsonElement
 
 /**
- * Parsing JSON toleran untuk respons Sanka (pelajaran v1: Anikoto membalik
- * tipe field di tengah hari — `mal_id` string vs number — dan model lama
+ * Parsing JSON toleran untuk respons Sanka (pelajaran v1: tipe field bisa
+ * berubah di tengah hari — `mal_id` string vs number — dan model lama
  * yang kaku langsung gagal parse).
  *
  * Fakta live (diuji 2026-11-17 dari VM):

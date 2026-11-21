@@ -146,4 +146,12 @@
     <string name="exo_controls_next_description">Berikutnya</string>
     <string name="exo_controls_previous_description">Sebelumnya</string>
 
+    <!-- v2.0.11: error state server (disamarkan — bukan pemberitahuan pemadaman). -->
+    <string name="server_sanka_putus">Server Sanka Putus</string>
+    <string name="server_sanka_putus_detail">Server sedang tidak dapat dijangkau. Coba lagi nanti.</string>
+    <!-- v2.0.11: ID Instalasi di header Konsol Diagnostik. -->
+    <string name="id_instalasi">ID Instalasi: %1$s</string>
+    <string name="id_instalasi_kosong">ID Instalasi: belum tersedia (offline)</string>
+    <string name="id_disalin">ID disalin</string>
+
 </resources>

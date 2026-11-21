@@ -12,7 +12,7 @@ import animelovers.rebornhd.data.local.entity.VideoEntity
  * Skema: PRD §5 (video + favorite).
  *
  * Versi 2 (migrasi DESTRUKTIF — D4, disetujui Faygo 2026-11-17):
- * kunci `idtitle` kini SLUG Sanka (dulu id angka Anikoto); riwayat dan
+ * kunci `idtitle` kini SLUG Sanka; riwayat dan
  * favorit v1 DIHAPUS BERSIH karena kuncinya tidak berlaku lagi.
  * Skema tabel tidak berubah (kolom sama) — yang berubah hanya isi kunci.
  */

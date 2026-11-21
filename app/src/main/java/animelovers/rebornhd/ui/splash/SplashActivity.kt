@@ -7,22 +7,28 @@ import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import animelovers.rebornhd.R
+import animelovers.rebornhd.app
 import animelovers.rebornhd.databinding.ActivitySplashBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.KillSwitch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Splash — adaptasi Splash.java asli (tanpa Remote Config, checkloc,
- * config GitHub, kill-switch, dan SDK iklan — semuanya DIHAPUS di v1).
+ * Splash — adaptasi Splash.java asli (tanpa checkloc, config GitHub,
+ * dan SDK iklan — semuanya DIHAPUS di v1).
  *
  * Tampilan: logo splashh.png (350×400dp) + "AnimLovers" 40sp + kredit dev
  * "Dibuat ulang oleh Hadi as Faygo" di posisi teks versi aslinya.
  * Dialog Disclaimer muncul sekali saat pertama buka (pref eulaKey).
  * v2: TIDAK ADA lagi cek backend /health (server kecil sudah dihapus —
  * sumber konten kini API Sanka langsung).
+ * v2.0.11: sebelum disclaimer/Main, cek saklar jarak jauh (maksimal
+ * 5 detik; gagal/timeout = jalan terus — fail-open). Bila MATI,
+ * langsung ke Main dengan error state server (disclaimer dilewati).
  */
 class SplashActivity : BaseActivity() {
 
@@ -37,11 +43,23 @@ class SplashActivity : BaseActivity() {
         binding = ActivitySplashBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // v2: tidak ada cek backend (server kecil dihapus) — langsung disclaimer/Main.
-        if (prefs.eulaKey != "1") {
-            showDisclaimer()
-        } else {
-            goToMain()
+        // v2.0.11: cek saklar jarak jauh DULU (maksimal 5 detik) — bila
+        // MATI, langsung ke Main dengan error state server; disclaimer
+        // dilewati (tidak ada gunanya menerima syarat aplikasi yang
+        // sedang tidak bisa dipakai). Gagal/timeout = jalan terus
+        // (fail-open — install pertama offline diizinkan).
+        lifecycleScope.launch {
+            val decision = withTimeoutOrNull(KillSwitch.SPLASH_TIMEOUT_MS) {
+                KillSwitch.check(app())
+            }
+            if (decision?.allowed == false) {
+                MainActivity.startDead(this@SplashActivity)
+                finish()
+            } else if (prefs.eulaKey != "1") {
+                showDisclaimer()
+            } else {
+                goToMain()
+            }
         }
     }
 

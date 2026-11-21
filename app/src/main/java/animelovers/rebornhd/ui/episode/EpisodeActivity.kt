@@ -13,8 +13,10 @@ import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.databinding.ActivityEpisodeBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.EpisodeAdapter
+import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
@@ -81,6 +83,15 @@ class EpisodeActivity : BaseActivity() {
 
     private fun load() {
         lifecycleScope.launch {
+            // v2.0.11 (delta F-3): gerbang MATI — jangan minta /detail.
+            // Jalur pemulihan proses: bila proses ini belum pernah cek,
+            // paksa satu kali cek dulu (F-1), lalu putuskan.
+            KillSwitch.ensureCheckedInProcess(app())
+            if (KillSwitch.isDead()) {
+                MainActivity.startDead(this@EpisodeActivity)
+                finish()
+                return@launch
+            }
             try {
                 val data = app().sankaRepository.detail(animeSlug)
                 detail = data
@@ -116,6 +127,13 @@ class EpisodeActivity : BaseActivity() {
     }
 
     private fun openPlayer(episode: Int) {
+        // v2.0.11: jangan buka player bila saklar MATI — kembali ke
+        // error state Beranda (bukan toast + diam).
+        if (KillSwitch.isDead()) {
+            MainActivity.startDead(this)
+            finish()
+            return
+        }
         // Slug episode ASLI dari respons detail — jangan dirangkai sendiri.
         // v2.0.10 item 1: daftar episode bisa berisi DUA entri bernomor
         // sama (entri "Episode Spesial" di depan, episode asli di

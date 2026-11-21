@@ -50,9 +50,12 @@ import animelovers.rebornhd.data.repo.SankaRepository
 import animelovers.rebornhd.data.repo.StallTracker
 import animelovers.rebornhd.databinding.ActivityVideoBinding
 import animelovers.rebornhd.ui.BaseActivity
+import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.KillSwitch
+import animelovers.rebornhd.util.KillSwitchLogic
 import animelovers.rebornhd.util.isOnWifi
 import animelovers.rebornhd.util.toast
 import coil.load
@@ -279,6 +282,12 @@ class VideoPlayActivity : BaseActivity() {
             episodeSlug: String,
             isMovie: Boolean = false
         ) {
+            // v2.0.11: jangan buka player bila saklar MATI — kembali ke
+            // error state Beranda (bukan toast + diam).
+            if (KillSwitch.isDead()) {
+                MainActivity.startDead(context)
+                return
+            }
             val intent = Intent(context, VideoPlayActivity::class.java).apply {
                 putExtra(Constants.EXTRA_ID_TITLE, animeSlug)
                 putExtra(Constants.EXTRA_TITLE, title)
@@ -295,6 +304,15 @@ class VideoPlayActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityVideoBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // v2.0.11: pertahanan lapis kedua — pemanggil start() sudah
+        // mengecek, tapi intent eksplisit (deep-link) tidak. Jangan
+        // putar apa pun bila saklar MATI.
+        if (KillSwitch.isDead()) {
+            MainActivity.startDead(this)
+            finish()
+            return
+        }
 
         animeSlug = intent.getStringExtra(Constants.EXTRA_ID_TITLE).orEmpty()
         animeTitle = intent.getStringExtra(Constants.EXTRA_TITLE).orEmpty()
@@ -325,11 +343,23 @@ class VideoPlayActivity : BaseActivity() {
         wireControls()
         registerWifiCallback()
 
-        // Gerbang WiFi (pref wifi_switch "1" + tidak di WiFi).
-        if (prefs.wifiSwitch == "1" && !isOnWifi()) {
-            showWifiGateDialog()
-        } else {
-            loadEpisode(episode, episodeSlug)
+        // v2.0.11 (delta F-1): jalur pemulihan proses (task restore
+        // langsung ke player) melewati Splash — paksa satu kali cek di
+        // proses ini SEBELUM episode dimuat. Bila MATI, kembali ke error
+        // state Beranda (bukan memutar dulu lalu berhenti).
+        lifecycleScope.launch {
+            val decision = KillSwitch.ensureCheckedInProcess(app())
+            if (!decision.allowed) {
+                MainActivity.startDead(this@VideoPlayActivity)
+                finish()
+                return@launch
+            }
+            // Gerbang WiFi (pref wifi_switch "1" + tidak di WiFi).
+            if (prefs.wifiSwitch == "1" && !isOnWifi()) {
+                showWifiGateDialog()
+            } else {
+                loadEpisode(episode, episodeSlug)
+            }
         }
     }
 
@@ -1463,8 +1493,37 @@ class VideoPlayActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        // v2.0.11: saklar MATI di tengah jalan — jangan lanjutkan
+        // pemutaran, kembali ke error state Beranda.
+        if (KillSwitch.isDead()) {
+            MainActivity.startDead(this)
+            finish()
+            return
+        }
         if (wasPlaying) {
             player?.play()
+        }
+        // Cek ulang berkala (item 6 + delta F-1): bila proses ini belum
+        // pernah cek ATAU cek terakhir sudah lebih dari 15 menit, cek
+        // lagi di background — bila hasilnya MATI, pemutaran dihentikan.
+        if (KillSwitchLogic.needsRecheck(
+                KillSwitch.hasCheckedInProcess(),
+                prefs.killLastCheckMs,
+                System.currentTimeMillis(),
+                KillSwitch.RECHECK_INTERVAL_MS
+            )
+        ) {
+            lifecycleScope.launch {
+                val decision = if (KillSwitch.hasCheckedInProcess()) {
+                    KillSwitch.check(app())
+                } else {
+                    KillSwitch.ensureCheckedInProcess(app())
+                }
+                if (!decision.allowed) {
+                    MainActivity.startDead(this@VideoPlayActivity)
+                    finish()
+                }
+            }
         }
     }
 

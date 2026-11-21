@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
  * satu baris ini ke implementasi Firebase — UI + gerbang tidak berubah.
  *
  * v2: satu-satunya sumber konten adalah Sanka (sankaTransport +
- * sankaRepository). Anikoto/VidCloud/MegaPlay/backend kecil sudah dihapus.
+ * sankaRepository). VidCloud/MegaPlay/backend kecil sudah dihapus.
  * Transport v2.0.2: WebView tersembunyi (Chrome asli) — OkHttp pensiun
  * (sidik TLS-nya diblokir Cloudflare dari IP HP Faygo).
  * v2.0.3: WebView DITEMPEL ke window MainActivity (attachToWindow di

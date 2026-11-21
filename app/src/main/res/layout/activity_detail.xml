@@ -360,6 +360,18 @@
         android:layout_height="match_parent"
         android:padding="24dp">
 
+        <!-- v2.0.11: judul error state server — hanya tampil saat saklar
+             MATI; error biasa tetap tanpa judul. -->
+        <TextView
+            android:id="@+id/error_detail_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/server_sanka_putus"
+            android:textSize="20sp"
+            android:textColor="?attr/textColor"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/error_detail_text"
             android:textSize="16sp"
@@ -375,6 +387,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/coba_lagi" />
+
+        <!-- v2.0.11: spinner saat "Coba Lagi" mengecek ulang saklar. -->
+        <ProgressBar
+            android:id="@+id/error_detail_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Overlay kunci Ecchi (desain.md §5.1). Tampil hanya bila genre mengandung

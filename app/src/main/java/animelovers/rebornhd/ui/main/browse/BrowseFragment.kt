@@ -11,7 +11,9 @@ import android.widget.ArrayAdapter
 import android.widget.Spinner
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -27,6 +29,8 @@ import animelovers.rebornhd.ui.detail.DetailActivity
 import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.KillEvaluation
+import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
@@ -84,6 +88,11 @@ class BrowseFragment : Fragment() {
      */
     private var hasLoadedOnce = false
 
+    // v2.0.11: evaluasi saklar terakhir yang sudah diterapkan ke tampilan
+    // (null = belum ada) — muat pertama tetap tugas onResume; kolektor
+    // hanya memuat saat BERUBAH dari MATI ke IZINKAN.
+    private var lastKillAllowed: Boolean? = null
+
     /** SearchView di toolbar — disimpan agar reload() bisa mereset teksnya. */
     private var searchView: SearchView? = null
 
@@ -134,6 +143,16 @@ class BrowseFragment : Fragment() {
 
         binding.swipeContainer.setOnRefreshListener { reload() }
 
+        // v2.0.11: tombol "Coba Lagi" di error state server + kolektor
+        // state saklar (MATI → error state menutupi Jelajahi; IZINKAN →
+        // sembunyikan).
+        binding.serverError.serverErrorRetry.setOnClickListener { retryKillCheck() }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                KillSwitch.state.collect { decision -> applyKillState(decision) }
+            }
+        }
+
         genreNames.add(getString(R.string.semua_genre))
         setupToolbar()
         // v2.0.7 #4: JANGAN load() di sini — fragment ini dibuat offscreen
@@ -153,6 +172,44 @@ class BrowseFragment : Fragment() {
         // hanya pengikatan poster ke RecyclerView.
         if (!hasLoadedOnce) {
             load()
+        }
+    }
+
+    /**
+     * v2.0.11: terapkan evaluasi saklar ke tampilan Jelajahi.
+     * MATI → error state server menutupi Jelajahi (judul "Server Sanka
+     * Putus", detail = kill_message). IZINKAN → sembunyikan; muat hanya
+     * bila BERUBAH dari MATI ke IZINKAN dan belum pernah dimuat —
+     * muat pertama tetap tugas onResume (supaya tidak dua kali).
+     */
+    private fun applyKillState(decision: KillEvaluation) {
+        if (_binding == null) return
+        val wasDead = lastKillAllowed == false
+        lastKillAllowed = decision.allowed
+        if (!decision.allowed) {
+            binding.serverError.serverErrorDetail.text = decision.message
+            binding.serverError.root.visibility = View.VISIBLE
+        } else {
+            binding.serverError.root.visibility = View.GONE
+            if (wasDead && !hasLoadedOnce) load()
+        }
+    }
+
+    /**
+     * v2.0.11: tombol "Coba Lagi" — cek ulang saklar. Hasil diterapkan
+     * lewat kolektor state (applyKillState); selama MATI, error state
+     * tetap tampil. Delta F-2: retry manual memaksa fetch segar
+     * (force = true) — bukan cache interval 15 menit.
+     */
+    private fun retryKillCheck() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val b = _binding ?: return@launch
+            b.serverError.serverErrorProgress.visibility = View.VISIBLE
+            b.serverError.serverErrorRetry.isEnabled = false
+            KillSwitch.check(requireContext().app(), force = true)
+            if (!isAdded) return@launch
+            _binding?.serverError?.serverErrorProgress?.visibility = View.GONE
+            _binding?.serverError?.serverErrorRetry?.isEnabled = true
         }
     }
 
@@ -254,6 +311,12 @@ class BrowseFragment : Fragment() {
 
     /** Muat daftar default (home) — tanpa request tambahan bila home di-cache. */
     private fun load() {
+        // v2.0.11: saat saklar MATI, jangan minta /home — error state
+        // server yang tampil (bukan toast + Jelajahi kosong).
+        if (KillSwitch.isDead()) {
+            applyKillState(KillSwitch.current())
+            return
+        }
         // Observasi O-1 (Cari Bug v2.0.7): batalkan load() sebelumnya
         // supaya dua load() tidak berjalan bersamaan (mis. onResume +
         // pull-to-refresh berkejaran — hasil lama bisa menimpa hasil baru).
@@ -298,6 +361,12 @@ class BrowseFragment : Fragment() {
      * satu request berjalan).
      */
     private fun refresh() {
+        // v2.0.11: saat saklar MATI, jangan minta /search atau /genre —
+        // error state server yang tampil.
+        if (KillSwitch.isDead()) {
+            applyKillState(KillSwitch.current())
+            return
+        }
         val repo = requireContext().app().sankaRepository
         loadJob?.cancel()
         loadingDone = false

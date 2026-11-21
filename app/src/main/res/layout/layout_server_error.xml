@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Error state server bersama (v2.0.11, PRD item 3) — dipakai Beranda dan
+  Jelajahi lewat <include>. Detail memakai container-nya sendiri
+  (sudah ada sejak v2.0.5) dan hanya meminjam judul + teksnya.
+
+  Judul DISAMARKAN sebagai putusnya server ("Server Sanka Putus") —
+  bukan pemberitahuan pemadaman. Tombol "Coba Lagi" memanggil cek
+  ulang; selama saklar MATI / tanggal lewat, hasilnya tetap gagal.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp"
+    android:background="?attr/bgColor"
+    android:visibility="gone">
+
+    <ImageView
+        android:id="@+id/server_error_icon"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:src="@drawable/ic_poster_error"
+        android:contentDescription="@string/server_sanka_putus" />
+
+    <TextView
+        android:id="@+id/server_error_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/server_sanka_putus"
+        android:textSize="20sp"
+        android:textColor="?attr/textColor" />
+
+    <TextView
+        android:id="@+id/server_error_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="@string/server_sanka_putus_detail"
+        android:textSize="16sp"
+        android:textColor="?attr/textColor" />
+
+    <Button
+        android:id="@+id/server_error_retry"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="@string/coba_lagi" />
+
+    <ProgressBar
+        android:id="@+id/server_error_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
+</LinearLayout>

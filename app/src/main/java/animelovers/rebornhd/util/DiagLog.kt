@@ -42,6 +42,10 @@ object DiagLog {
     const val TAG_POSTER = "Poster"
     const val TAG_KONSOL = "Konsol"
     const val TAG_CRASH = "Crash"
+    // v2.0.11: jalur saklar jarak jauh. Baris log tag ini WAJIB netral —
+    // fiksi "Server Sanka tidak dapat dijangkau" + kode alasan
+    // remote-off / kedaluwarsa / dikecualikan / fetch-gagal.
+    const val TAG_SERVER = "Server"
 
     /** Ambang lambat (ms) — di atas ini, peristiwa dicatat sebagai WARN, bukan INFO. */
     const val SLOW_FIRST_FRAME_MS = 10_000L

@@ -19,6 +19,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # v2.0.11: google-services.json TIDAK ada di repo (di-.gitignore, berisi
+      # kunci proyek) — tulis ulang dari secret sebelum build, kalau tidak
+      # plugin google-services gagal ("File google-services.json is missing").
+      # Secret GOOGLE_SERVICES_JSON = isi app/google-services.json di-encode
+      # base64 (dibuat Faygo di Settings > Secrets and variables > Actions).
+      - name: Restore google-services.json
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
+
       - name: Set up Temurin JDK 17
         uses: actions/setup-java@v4
         with:

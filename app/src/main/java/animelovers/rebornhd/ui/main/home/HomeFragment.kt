@@ -26,6 +26,8 @@ import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
 import animelovers.rebornhd.util.DiagError
 import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.KillEvaluation
+import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.isOnline
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
@@ -58,6 +60,11 @@ class HomeFragment : Fragment() {
 
     private var home: SankaHome? = null
     private var lastEcchiUnlocked: Boolean? = null
+    // v2.0.11: penanda muat pertama Beranda — supaya kolektor state
+    // saklar tidak memuat dua kali (onViewCreated sudah memuat saat
+    // IZINKAN) tapi tetap memuat bila aplikasi dibuka saat MATI lalu
+    // saklar kembali IZINKAN.
+    private var initialLoadDone = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -127,7 +134,24 @@ class HomeFragment : Fragment() {
             }
         }
 
-        load()
+        // v2.0.11: tombol "Coba Lagi" di error state server.
+        binding.serverError.serverErrorRetry.setOnClickListener { retryKillCheck() }
+
+        // v2.0.11: terapkan evaluasi saklar terbaru — MATI → error state
+        // server menutupi Beranda; IZINKAN → sembunyikan + muat bila
+        // Beranda belum pernah dimuat (mis. aplikasi dibuka saat MATI).
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                KillSwitch.state.collect { decision -> applyKillState(decision) }
+            }
+        }
+
+        if (KillSwitch.isDead()) {
+            applyKillState(KillSwitch.current())
+        } else {
+            initialLoadDone = true
+            load()
+        }
     }
 
     override fun onResume() {
@@ -156,6 +180,12 @@ class HomeFragment : Fragment() {
     }
 
     private fun load() {
+        // v2.0.11: saat saklar MATI, jangan minta /home — error state
+        // server yang tampil (bukan toast + Beranda kosong).
+        if (KillSwitch.isDead()) {
+            applyKillState(KillSwitch.current())
+            return
+        }
         // v2.0.6 #7: render dari CACHE dulu (bila ada, <10 menit) — Beranda
         // terisi instan di bukaan kedua; fetch segar tetap jalan di
         // belakang dan memperbarui tampilan bila selesai.
@@ -245,6 +275,44 @@ class HomeFragment : Fragment() {
                     _binding?.swipeContainerHome?.isRefreshing = false
                 }
             }
+        }
+    }
+
+    /**
+     * v2.0.11: terapkan evaluasi saklar ke tampilan Beranda.
+     * MATI → error state server menutupi Beranda (judul "Server Sanka
+     * Putus", detail = kill_message). IZINKAN → sembunyikan; bila
+     * Beranda belum pernah dimuat (dibuka saat MATI), muat sekarang.
+     */
+    private fun applyKillState(decision: KillEvaluation) {
+        if (_binding == null) return
+        if (!decision.allowed) {
+            binding.serverError.serverErrorDetail.text = decision.message
+            binding.serverError.root.visibility = View.VISIBLE
+        } else {
+            binding.serverError.root.visibility = View.GONE
+            if (!initialLoadDone) {
+                initialLoadDone = true
+                load()
+            }
+        }
+    }
+
+    /**
+     * v2.0.11: tombol "Coba Lagi" — cek ulang saklar. Hasil diterapkan
+     * lewat kolektor state (applyKillState); selama MATI, error state
+     * tetap tampil. Delta F-2: retry manual memaksa fetch segar
+     * (force = true) — bukan cache interval 15 menit.
+     */
+    private fun retryKillCheck() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val b = _binding ?: return@launch
+            b.serverError.serverErrorProgress.visibility = View.VISIBLE
+            b.serverError.serverErrorRetry.isEnabled = false
+            KillSwitch.check(requireContext().app(), force = true)
+            if (!isAdded) return@launch
+            _binding?.serverError?.serverErrorProgress?.visibility = View.GONE
+            _binding?.serverError?.serverErrorRetry?.isEnabled = true
         }
     }
 

@@ -1,9 +1,12 @@
 package animelovers.rebornhd.ui.main
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import animelovers.rebornhd.R
 import animelovers.rebornhd.app
@@ -12,8 +15,11 @@ import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.main.browse.BrowseFragment
 import animelovers.rebornhd.ui.main.history.HistoryFragment
 import animelovers.rebornhd.ui.main.home.HomeFragment
+import animelovers.rebornhd.util.KillSwitch
+import animelovers.rebornhd.util.KillSwitchLogic
 import animelovers.rebornhd.util.toast
 import com.google.android.material.tabs.TabLayoutMediator
+import kotlinx.coroutines.launch
 
 /**
  * Main — 3 tab datar (Beranda / Jelajahi / Riwayat), tanpa drawer/bottom-nav.
@@ -24,6 +30,24 @@ class MainActivity : BaseActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var lastBackPress = 0L
+
+    companion object {
+        /** Extra: buka Main langsung dengan error state server (saklar MATI). */
+        const val EXTRA_SHOW_DEAD = "show_dead"
+
+        /**
+         * Buka Main dari jalur MATI (Splash / Detail / player) — tumpuk
+         * di atas dibersihkan supaya Back tidak kembali ke layar yang
+         * sudah tidak boleh tampil.
+         */
+        fun startDead(context: Context) {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                putExtra(EXTRA_SHOW_DEAD, true)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            context.startActivity(intent)
+        }
+    }
 
     /** Gerbang Ecchi terbuka bila sudah login DAN toggle Ecchi aktif. */
     fun isEcchiUnlocked(): Boolean {
@@ -83,6 +107,52 @@ class MainActivity : BaseActivity() {
                 else -> getString(R.string.tab_riwayat)
             }
         }.attach()
+
+        // v2.0.11: dibuka dari jalur MATI (Splash / Detail / player) —
+        // tampilkan tab Beranda dengan error state server.
+        if (intent.getBooleanExtra(EXTRA_SHOW_DEAD, false) || KillSwitch.isDead()) {
+            binding.viewpager.setCurrentItem(0, false)
+        }
+        // v2.0.11 (delta F-1): jalur pemulihan proses melewati Splash —
+        // paksa satu kali cek di proses ini (tanpa peduli killLastCheckMs
+        // yang persisten antar proses). Hasil MATI diterapkan lewat
+        // state (kolektor Beranda/Jelajahi) + pindah ke tab Beranda.
+        lifecycleScope.launch {
+            val decision = KillSwitch.ensureCheckedInProcess(app())
+            if (!decision.allowed) binding.viewpager.setCurrentItem(0, false)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // v2.0.11 (item 6 + delta F-4): cek ulang berkala — bila proses
+        // ini belum pernah cek ATAU cek terakhir sudah lebih dari 15
+        // menit, cek lagi di background. Hasil MATI diterapkan lewat
+        // state KillSwitch (kolektor Beranda/Jelajahi menampilkan error
+        // state; player yang sedang jalan dihentikan oleh cek-nya
+        // sendiri di VideoPlayActivity.onResume) DAN pindah ke tab
+        // Beranda (tab 0) supaya error state terlihat.
+        if (KillSwitch.isDead()) {
+            binding.viewpager.setCurrentItem(0, false)
+        }
+        if (KillSwitchLogic.needsRecheck(
+                KillSwitch.hasCheckedInProcess(),
+                prefs.killLastCheckMs,
+                System.currentTimeMillis(),
+                KillSwitch.RECHECK_INTERVAL_MS
+            )
+        ) {
+            lifecycleScope.launch {
+                val decision = if (KillSwitch.hasCheckedInProcess()) {
+                    KillSwitch.check(app())
+                } else {
+                    KillSwitch.ensureCheckedInProcess(app())
+                }
+                if (!decision.allowed) {
+                    binding.viewpager.setCurrentItem(0, false)
+                }
+            }
+        }
     }
 
     override fun onDestroy() {

@@ -23,6 +23,8 @@ import animelovers.rebornhd.databinding.ActivityConsoleBinding
 import animelovers.rebornhd.databinding.ItemConsoleLineBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.util.DiagLog
+import animelovers.rebornhd.util.KillSwitch
+import animelovers.rebornhd.util.KillSwitchLogic
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +58,27 @@ class ConsoleActivity : BaseActivity() {
         binding.toolbarConsole.setTintedNavigationIcon(R.drawable.ic_arrow_back_black_24dp)
         binding.toolbarConsole.setNavigationOnClickListener { finish() }
 
+        // v2.0.11: header ID Instalasi — diketuk untuk menyalin (Faygo
+        // memasukkan ID ini ke kill_exempt_ids supaya HP-nya
+        // dikecualikan). ID diambil dulu dari simpanan; bila belum ada,
+        // minta di background (maks. 3 detik) lalu perbarui header.
+        refreshInstallationIdText()
+        binding.consoleInstallationId.setOnClickListener { copyInstallationId() }
+        lifecycleScope.launch {
+            val id = KillSwitch.installationId(app())
+            if (id.isNotBlank()) refreshInstallationIdText()
+            // v2.0.11 (delta F-6): baris log pertama dicatat SETELAH ID
+            // diketahui — supaya baris "Konsol dibuka" membawa ID (HANYA
+            // 8 karakter pertama) sejak bukaan pertama, bukan baris tanpa
+            // ID. Bila ID tetap kosong (offline), baris dicatat tanpa ID
+            // (header menampilkan "belum tersedia (offline)").
+            val shortId = KillSwitchLogic.shortId(id)
+            app().diagLogger.info(
+                DiagLog.TAG_KONSOL,
+                "Konsol dibuka" + if (shortId.isEmpty()) "" else " — id $shortId"
+            )
+        }
+
         adapter = ConsoleLineAdapter()
         binding.consoleList.apply {
             layoutManager = LinearLayoutManager(this@ConsoleActivity)
@@ -81,7 +104,23 @@ class ConsoleActivity : BaseActivity() {
                 if (autoScroll) scrollToBottom()
             }
         }
-        app().diagLogger.info(DiagLog.TAG_KONSOL, "Konsol dibuka")
+    }
+
+    /** v2.0.11: tampilkan ID Instalasi di header (atau placeholder). */
+    private fun refreshInstallationIdText() {
+        val id = app().prefs.installationId
+        binding.consoleInstallationId.text =
+            if (id.isBlank()) getString(R.string.id_instalasi_kosong)
+            else getString(R.string.id_instalasi, id)
+    }
+
+    /** v2.0.11: ketuk header → salin ID penuh ke clipboard. */
+    private fun copyInstallationId() {
+        val id = app().prefs.installationId
+        if (id.isBlank()) return
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("ID Instalasi", id))
+        toast(getString(R.string.id_disalin))
     }
 
     private fun scrollToBottom() {

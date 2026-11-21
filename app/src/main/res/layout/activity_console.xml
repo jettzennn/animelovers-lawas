@@ -57,6 +57,22 @@
             android:text="@string/hapus_log" />
     </LinearLayout>
 
+    <!-- v2.0.11: ID Instalasi perangkat ini — diketuk untuk menyalin.
+         Faygo memasukkan ID ini ke kill_exempt_ids di konsol supaya
+         HP-nya dikecualikan dari saklar jarak jauh. -->
+    <TextView
+        android:id="@+id/console_installation_id"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="4dp"
+        android:text="@string/id_instalasi_kosong"
+        android:textColor="?attr/metaTextColor"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/console_actions" />
+
     <TextView
         android:id="@+id/console_empty"
         android:layout_width="match_parent"
@@ -68,7 +84,7 @@
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/console_actions" />
+        app:layout_constraintTop_toBottomOf="@+id/console_installation_id" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/console_list"
@@ -79,7 +95,7 @@
         app:layout_constraintBottom_toTopOf="@+id/auto_scroll_row"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/console_actions" />
+        app:layout_constraintTop_toBottomOf="@+id/console_installation_id" />
 
     <LinearLayout
         android:id="@+id/auto_scroll_row"

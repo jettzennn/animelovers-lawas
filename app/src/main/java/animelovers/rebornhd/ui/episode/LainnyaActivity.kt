@@ -13,7 +13,9 @@ import animelovers.rebornhd.databinding.ActivityLainnyaBinding
 import animelovers.rebornhd.ui.BaseActivity
 import animelovers.rebornhd.ui.adapter.BrowseGridAdapter
 import animelovers.rebornhd.ui.detail.DetailActivity
+import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.setTintedNavigationIcon
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
@@ -80,6 +82,15 @@ class LainnyaActivity : BaseActivity() {
 
     private fun load() {
         lifecycleScope.launch {
+            // v2.0.11 (delta F-3): gerbang MATI — jangan minta /home.
+            // Jalur pemulihan proses: bila proses ini belum pernah cek,
+            // paksa satu kali cek dulu (F-1), lalu putuskan.
+            KillSwitch.ensureCheckedInProcess(app())
+            if (KillSwitch.isDead()) {
+                MainActivity.startDead(this@LainnyaActivity)
+                finish()
+                return@launch
+            }
             try {
                 val repo = app().sankaRepository
                 val home = repo.home()

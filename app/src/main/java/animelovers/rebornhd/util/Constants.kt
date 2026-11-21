@@ -3,7 +3,7 @@ package animelovers.rebornhd.util
 /**
  * Konstanta global. Satu tempat untuk semua nilai yang dipakai lintas layar.
  *
- * v2 (Sanka): Anikoto + VidCloud + MegaPlay + backend kecil SUDAH DIHAPUS.
+ * v2 (Sanka): VidCloud + MegaPlay + backend kecil sudah dihapus.
  * Satu-satunya sumber konten adalah API Sanka Vollerei (Animekompi).
  */
 object Constants {

@@ -20,6 +20,7 @@ Keluar 0 bila tidak ada ERROR, 1 bila ada.
 Referensi library (media3-ui) di-allowlist: exo_icon_*.
 """
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -581,10 +582,10 @@ if not re.search(r"SPLASH_DELAY_MS\s*=\s*0L", _constants):
         "Splash 2 detik dipotong)"
     )
 _app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10")
-if '"2.0.10"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.10"')
+if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11")
+if '"2.0.11"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.11"')
 
 # ---------- 14. Gerbang v2.0.5 — state error Detail (temuan Minor Cari Bug) ----------
 # Detail gagal (belum ada data) WAJIB menampilkan state error MENETAP +
@@ -1422,7 +1423,7 @@ if "Video tidak tersedia" in _res_text:
     )
 
 # 18o. Batasan keras TIDAK BOLEH berubah (re-assert §13d/§16f/§17k) +
-#      versi 15 / "2.0.10" (v2.0.10 — 15 kini versi yang benar).
+#      versi 16 / "2.0.11" (v2.0.11 — 16 kini versi yang benar).
 if not re.search(r"SANKA_MIN_INTERVAL_MS\s*=\s*1_400L", _constants):
     errors.append(
         "Constants.kt: SANKA_MIN_INTERVAL_MS wajib tetap 1_400L "
@@ -1438,13 +1439,13 @@ if "-keepattributes Signature" not in _proguard:
         "proguard-rules.pro: guard R8 (keepattributes Signature) wajib "
         "ada — v2.0.7 item 14–16 tidak boleh menyentuh guard"
     )
-if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
+if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
     errors.append(
-        "app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10"
+        "app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11"
     )
-if '"2.0.10"' not in _app_gradle:
+if '"2.0.11"' not in _app_gradle:
     errors.append(
-        'app/build.gradle.kts: versionName wajib "2.0.10"'
+        'app/build.gradle.kts: versionName wajib "2.0.11"'
     )
 
 # 18p. DITULIS ULANG di v2.0.8 (item 3): 451/404/410 fail-fast via
@@ -1957,12 +1958,12 @@ for _h in ("versionName", "Build.MODEL", "Build.VERSION.RELEASE"):
             "(v2.0.9 item 7)"
         )
 
-# 20h. Versi: §13d + §18o naik ke 15 / "2.0.10" (re-assert — gerbang
+# 20h. Versi: §13d + §18o naik ke 16 / "2.0.11" (re-assert — gerbang
 #      versi harus lolos SETELAH bump; pola v2.0.8: §13d ikut naik).
-if not re.search(r"versionCode\s*=\s*15\b", _app_gradle):
-    errors.append("app/build.gradle.kts: versionCode wajib 15 untuk v2.0.10")
-if '"2.0.10"' not in _app_gradle:
-    errors.append('app/build.gradle.kts: versionName wajib "2.0.10"')
+if not re.search(r"versionCode\s*=\s*16\b", _app_gradle):
+    errors.append("app/build.gradle.kts: versionCode wajib 16 untuk v2.0.11")
+if '"2.0.11"' not in _app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.11"')
 
 # 20i (DIPERKUAT v2.0.10 — O-3 Cari Bug v2.0.9): cek pada teks yang
 #      sudah dibuang string/komentarnya (strip_kotlin) — baris yang
@@ -2310,6 +2311,352 @@ if _clear_start >= 0:
             "async (fileScope.launch) — hapus sinkron supaya force-stop "
             "tidak menghidupkan kembali file lama "
             "(M-1 Cari Bug v2.0.9, v2.0.10 #12)"
+        )
+
+# ---------- v2.0.11 (kill switch) ----------
+# 22a. Evaluator murni ADA, urutan cek WAJIB pengecualian → saklar →
+#      kedaluwarsa, dan TIDAK BOLEH mengimpor Android/Firebase
+#      (harness kotlinc JVM mengompilasinya tanpa classpath Android).
+_ks_logic_path = JAVA / "animelovers" / "rebornhd" / "util" / "KillSwitchLogic.kt"
+_ks_wrapper_path = JAVA / "animelovers" / "rebornhd" / "util" / "KillSwitch.kt"
+if not _ks_logic_path.exists():
+    errors.append("KillSwitchLogic.kt tidak ada — evaluator murni saklar (v2.0.11 #2)")
+else:
+    _ks_logic = _ks_logic_path.read_text(encoding="utf-8")
+    if "fun evaluate(" not in _ks_logic:
+        errors.append("KillSwitchLogic.kt: fun evaluate() wajib ada (v2.0.11 #2)")
+    _ks_exempt_pos = _ks_logic.find("parseExemptIds(config.exemptIds)")
+    _ks_switch_pos = _ks_logic.find("config.switchOn")
+    _ks_expiry_pos = _ks_logic.find("isExpired(config.expiryDate")
+    if min(_ks_exempt_pos, _ks_switch_pos, _ks_expiry_pos) < 0:
+        errors.append(
+            "KillSwitchLogic.kt: urutan cek tidak lengkap — wajib ada "
+            "pengecualian, saklar, lalu kedaluwarsa (v2.0.11 #2)"
+        )
+    elif not (_ks_exempt_pos < _ks_switch_pos < _ks_expiry_pos):
+        errors.append(
+            "KillSwitchLogic.kt: URUTAN CEK SALAH — wajib pengecualian → "
+            "saklar → kedaluwarsa (v2.0.11 #2)"
+        )
+    for _ks_bad_import in ("import android.", "import com.google.firebase"):
+        if _ks_bad_import in _ks_logic:
+            errors.append(
+                "KillSwitchLogic.kt: TIDAK BOLEH mengimpor Android/Firebase "
+                f"({_ks_bad_import}…) — berkas ini dikompilasi harness JVM "
+                "tanpa classpath Android (v2.0.11 #2)"
+            )
+    if "import java.time.LocalDate" not in _ks_logic:
+        warnings.append(
+            "KillSwitchLogic.kt: tanpa java.time.LocalDate — tanggal "
+            "kedaluwarsa sebaiknya dinilai per hari lokal Asia/Jakarta "
+            "(v2.0.11 #2)"
+        )
+if not _ks_wrapper_path.exists():
+    errors.append("KillSwitch.kt tidak ada — wrapper Android/Firebase (v2.0.11 #2)")
+else:
+    _ks_wrapper = _ks_wrapper_path.read_text(encoding="utf-8")
+    for _ks_need in (
+        "FirebaseRemoteConfig", "FirebaseInstallations",
+        "setMinimumFetchIntervalInSeconds", "fetchAndActivate",
+    ):
+        if _ks_need not in _ks_wrapper:
+            errors.append(f"KillSwitch.kt: {_ks_need} wajib ada (v2.0.11 #1/#2)")
+    if "900" not in _ks_wrapper:
+        errors.append(
+            "KillSwitch.kt: interval fetch 900 detik (15 menit) wajib ada "
+            "(v2.0.11 #2)"
+        )
+
+# 22b. google-services.json: WAJIB di .gitignore, WAJIB TIDAK terindeks
+#      git, dan WAJIB TIDAK PERNAH masuk ZIP (Deploy memakainya dari
+#      CI secret). Isinya (api key) tidak pernah ditulis di laporan.
+_ks_gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8", errors="replace")
+if "google-services.json" not in _ks_gitignore:
+    errors.append(
+        ".gitignore: google-services.json WAJIB diabaikan — berisi api key "
+        "proyek Firebase (v2.0.11 #1)"
+    )
+try:
+    _ks_ls = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", "app/google-services.json"],
+        capture_output=True, text=True, timeout=15,
+    )
+    if _ks_ls.returncode == 0 and _ks_ls.stdout.strip():
+        errors.append(
+            "app/google-services.json TERINDEKS git — hapus dari index "
+            "(file ini hanya untuk build lokal + CI secret, v2.0.11 #1)"
+        )
+    elif _ks_ls.returncode != 0:
+        warnings.append("verify.py §22b: git ls-files gagal — tidak bisa memastikan google-services.json tidak terindeks")
+except Exception:
+    warnings.append("verify.py §22b: git tidak bisa dijalankan — tidak bisa memastikan google-services.json tidak terindeks")
+
+# 22c. Gradle: versionCode 16 / "2.0.11"; BOM 32.7.0 + config-ktx +
+#      installations-ktx; plugin google-services 4.4.0; TANPA
+#      firebase-auth / play-services-auth / facebook-login.
+_ks_app_gradle = (ROOT / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+_ks_root_gradle = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
+_ks_toml = (ROOT / "gradle" / "libs.versions.toml").read_text(encoding="utf-8")
+if "versionCode = 16" not in _ks_app_gradle:
+    errors.append("app/build.gradle.kts: versionCode wajib 16 (v2.0.11)")
+if 'versionName = "2.0.11"' not in _ks_app_gradle:
+    errors.append('app/build.gradle.kts: versionName wajib "2.0.11" (v2.0.11)')
+for _ks_dep in ("firebase.bom", "firebase.config.ktx", "firebase.installations.ktx"):
+    if _ks_dep not in _ks_app_gradle:
+        errors.append(f"app/build.gradle.kts: {_ks_dep} wajib ada (v2.0.11 #1)")
+if "google.services" not in _ks_app_gradle or "google.services" not in _ks_root_gradle:
+    errors.append(
+        "plugin google-services wajib diterapkan di root + app "
+        "build.gradle.kts (v2.0.11 #1)"
+    )
+if '"32.7.0"' not in _ks_toml or '"4.4.0"' not in _ks_toml:
+    errors.append(
+        "gradle/libs.versions.toml: firebase-bom wajib 32.7.0 dan "
+        "google-services wajib 4.4.0 (v2.0.11 #1)"
+    )
+for _ks_forbidden_dep in ("firebase-auth", "play-services-auth", "facebook-login"):
+    # Komentar (// di gradle, # di toml) dibuang dulu — komentar
+    # "JANGAN firebase-auth ..." di app/build.gradle.kts sendiri
+    # tidak boleh memicu gerbang; yang dicek deklarasi dependensi.
+    _ks_gradle_code = "\n".join(
+        _ks_line for _ks_line in _ks_app_gradle.splitlines()
+        if not _ks_line.strip().startswith("//")
+    )
+    _ks_toml_code = "\n".join(
+        _ks_line for _ks_line in _ks_toml.splitlines()
+        if not _ks_line.strip().startswith("#")
+    )
+    if _ks_forbidden_dep in _ks_gradle_code or _ks_forbidden_dep in _ks_toml_code:
+        errors.append(
+            f"{_ks_forbidden_dep} DILARANG di v2.0.11 — login TIDAK "
+            "dibangun di versi ini (StubAuthRepository tetap)"
+        )
+
+# 22d. Splash cek SEBELUM disclaimer/Main (maks. 5 detik); Main punya
+#      startDead + cek ulang onResume (>15 menit).
+_ks_splash = (JAVA / "animelovers" / "rebornhd" / "ui" / "splash" / "SplashActivity.kt").read_text(encoding="utf-8")
+if "KillSwitch.check" not in _ks_splash or "startDead" not in _ks_splash:
+    errors.append(
+        "SplashActivity.kt: wajib cek KillSwitch.check() sebelum "
+        "disclaimer/Main dan ke MainActivity.startDead() bila MATI "
+        "(v2.0.11 #2/#3)"
+    )
+if "SPLASH_TIMEOUT_MS" not in _ks_splash and "withTimeoutOrNull" not in _ks_splash:
+    errors.append(
+        "SplashActivity.kt: cek saklar wajib dibatasi 5 detik "
+        "(SPLASH_TIMEOUT_MS / withTimeoutOrNull, v2.0.11 #2)"
+    )
+_ks_main = (JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "MainActivity.kt").read_text(encoding="utf-8")
+if "fun startDead" not in _ks_main or "EXTRA_SHOW_DEAD" not in _ks_main:
+    errors.append(
+        "MainActivity.kt: startDead() + EXTRA_SHOW_DEAD wajib ada — "
+        "jalur MATI kembali ke error state Beranda (v2.0.11 #3)"
+    )
+if "RECHECK_INTERVAL_MS" not in _ks_main or "KillSwitch.check" not in _ks_main:
+    errors.append(
+        "MainActivity.kt: onResume wajib cek ulang bila cek terakhir "
+        "> 15 menit (v2.0.11 #6)"
+    )
+
+# 22e. Gerbang isDead() di semua jalur masuk konten + player, dan
+#      include error state ada di Beranda + Jelajahi.
+_ks_guarded = {
+    "HomeFragment": JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "home" / "HomeFragment.kt",
+    "BrowseFragment": JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "browse" / "BrowseFragment.kt",
+    "DetailActivity": JAVA / "animelovers" / "rebornhd" / "ui" / "detail" / "DetailActivity.kt",
+    "EpisodeActivity": JAVA / "animelovers" / "rebornhd" / "ui" / "episode" / "EpisodeActivity.kt",
+    # Delta F-3 Cari Bug v2.0.11: LainnyaActivity juga memuat konten
+    # server (/home) — gerbang isDead() wajib ada di load().
+    "LainnyaActivity": JAVA / "animelovers" / "rebornhd" / "ui" / "episode" / "LainnyaActivity.kt",
+    "VideoPlayActivity": JAVA / "animelovers" / "rebornhd" / "ui" / "player" / "VideoPlayActivity.kt",
+}
+for _ks_name, _ks_path in _ks_guarded.items():
+    _ks_text = _ks_path.read_text(encoding="utf-8")
+    if "KillSwitch.isDead()" not in _ks_text:
+        errors.append(f"{_ks_name}: gerbang KillSwitch.isDead() wajib ada (v2.0.11 #3)")
+    if _ks_name == "VideoPlayActivity" and "fun start(" in _ks_text:
+        _ks_start = _ks_text[_ks_text.find("fun start("):]
+        if "KillSwitch.isDead()" not in _ks_start[:1200]:
+            errors.append(
+                "VideoPlayActivity.start(): gerbang isDead() wajib ada — "
+                "player tidak boleh dibuka saat MATI (v2.0.11 #3)"
+            )
+for _ks_layout in ("fragment_home.xml", "fragment_browse.xml"):
+    _ks_layout_text = (RES / "layout" / _ks_layout).read_text(encoding="utf-8")
+    if "server_error" not in _ks_layout_text or "layout_server_error" not in _ks_layout_text:
+        errors.append(
+            f"{_ks_layout}: include layout_server_error wajib ada — "
+            "error state server (v2.0.11 #3)"
+        )
+if not (RES / "layout" / "layout_server_error.xml").exists():
+    errors.append("layout_server_error.xml tidak ada (v2.0.11 #3)")
+
+# 22f. Bahasa NETRAL: layar error + string + baris log jalur saklar
+#      TIDAK BOLEH mengandung kata kill / dimatikan / firebase.
+#      (Nama kelas/parameter/kunci seperti KillSwitch, kill_switch,
+#      kill_last_check_ms BUKAN teks tampil — dikecualikan.)
+_ks_forbidden_words = ("kill", "dimatikan", "firebase")
+_ks_allowed_literals = {
+    "kill_switch", "kill_message", "kill_expiry_date", "kill_exempt_ids",
+    "kill_last_check_ms",
+}
+for _ks_path in (_ks_logic_path, _ks_wrapper_path):
+    if not _ks_path.exists():
+        continue
+    _ks_text = _ks_path.read_text(encoding="utf-8")
+    for _ks_lit in re.findall(r'"([^"]*)"', _ks_text):
+        if _ks_lit in _ks_allowed_literals:
+            continue
+        _ks_low = _ks_lit.lower()
+        for _ks_word in _ks_forbidden_words:
+            if _ks_word in _ks_low:
+                errors.append(
+                    f"{_ks_path.name}: literal \"{_ks_lit}\" mengandung kata "
+                    f"terlarang '{_ks_word}' — layar error + log jalur "
+                    "saklar wajib netral (v2.0.11 #7)"
+                )
+# Hanya string v2.0.11 (jalur saklar) yang dicek — string lama
+# login_belum_tersedia ("proyek Firebase baru belum dipasang") memang
+# menyebut Firebase dan itu benar untuk konteksnya (login).
+_ks_v211_strings = {
+    "server_sanka_putus", "server_sanka_putus_detail",
+    "id_instalasi", "id_instalasi_kosong", "id_disalin",
+}
+for _ks_match in re.finditer(
+    r"<string name=\"([^\"]+)\">([^<]*)</string>", _strings_xml
+):
+    if _ks_match.group(1) not in _ks_v211_strings:
+        continue
+    _ks_low = _ks_match.group(2).lower()
+    for _ks_word in _ks_forbidden_words:
+        if _ks_word in _ks_low:
+            errors.append(
+                f"strings.xml: string {_ks_match.group(1)} mengandung kata "
+                f"terlarang '{_ks_word}' — teks tampil wajib netral "
+                "(v2.0.11 #7)"
+            )
+_ks_server_layout = (RES / "layout" / "layout_server_error.xml")
+if _ks_server_layout.exists():
+    _ks_layout_text = _ks_server_layout.read_text(encoding="utf-8")
+    for _ks_word in _ks_forbidden_words:
+        if _ks_word in _ks_layout_text.lower():
+            errors.append(
+                f"layout_server_error.xml: mengandung kata terlarang "
+                f"'{_ks_word}' — layar error wajib netral (v2.0.11 #7)"
+            )
+
+# 22g. Prefs + Konsol: installation_id + kill_last_check_ms; header
+#      ID Instalasi (ketuk = salin); baris "Konsol dibuka" hanya
+#      boleh mencatat 8 karakter pertama (shortId).
+_ks_prefs = (JAVA / "animelovers" / "rebornhd" / "util" / "Prefs.kt").read_text(encoding="utf-8")
+for _ks_key in ("installationId", "killLastCheckMs"):
+    if _ks_key not in _ks_prefs:
+        errors.append(f"Prefs.kt: properti {_ks_key} wajib ada (v2.0.11 #4/#6)")
+_ks_console = (JAVA / "animelovers" / "rebornhd" / "ui" / "console" / "ConsoleActivity.kt").read_text(encoding="utf-8")
+# consoleInstallationId = field binding dari id console_installation_id.
+for _ks_need in ("consoleInstallationId", "copyInstallationId", "shortId"):
+    if _ks_need not in _ks_console:
+        errors.append(f"ConsoleActivity.kt: {_ks_need} wajib ada — ID Instalasi di header (v2.0.11 #5)")
+if "console_installation_id" not in (RES / "layout" / "activity_console.xml").read_text(encoding="utf-8"):
+    errors.append("activity_console.xml: id console_installation_id wajib ada — header ID Instalasi (v2.0.11 #5)")
+if "Konsol dibuka" in _ks_console and "shortId" not in _ks_console:
+    errors.append(
+        "ConsoleActivity.kt: baris 'Konsol dibuka' wajib memakai shortId "
+        "(ID penuh TIDAK BOLEH masuk log, v2.0.11 #5)"
+    )
+
+# 22h. Larangan abadi: string "Video tidak tersedia" = 0 dan opsi
+#      "Putar lewat website" = 0 di seluruh app/src; berkas BEKU
+#      SankaWebTransport.kt tidak boleh disentuh v2.0.11.
+#      (Frasa "lewat website" masih ada di KOMENTAR lama sebagai catatan
+#      sejarah penghapusan — jadi dicek hanya di baris kode (bukan
+#      baris komentar) + nilai string XML, bukan teks mentah.)
+_ks_src_all = ""
+_ks_code_lines: list[str] = []
+for _ks_file in (ROOT / "app" / "src").rglob("*.kt"):
+    _ks_file_text = _ks_file.read_text(encoding="utf-8", errors="replace")
+    _ks_src_all += _ks_file_text + "\n"
+    for _ks_line in _ks_file_text.splitlines():
+        _ks_stripped = _ks_line.strip()
+        if _ks_stripped.startswith(("//", "*", "/*", "*/")):
+            continue
+        _ks_code_lines.append(_ks_line)
+_ks_code_text = "\n".join(_ks_code_lines)
+if "Video tidak tersedia" in _ks_src_all or "Video tidak tersedia" in _strings_xml:
+    errors.append(
+        'String "Video tidak tersedia" DILARANG SELAMANYA — bukan solusi '
+        "(v2.0.11, keputusan Faygo)"
+    )
+_ks_xml_values = " ".join(
+    _ks_m.group(2) for _ks_m in re.finditer(
+        r"<string name=\"([^\"]+)\">([^<]*)</string>", _strings_xml
+    )
+)
+if "Putar lewat website" in _ks_code_text or "Putar lewat website" in _ks_xml_values:
+    errors.append(
+        'Opsi/dialog "Putar lewat website" DILARANG — sudah dihapus total '
+        "di v2.0.8, jangan dibangun lagi (v2.0.11)"
+    )
+_ks_transport = (JAVA / "animelovers" / "rebornhd" / "data" / "api" / "SankaWebTransport.kt").read_text(encoding="utf-8")
+if "KillSwitch" in _ks_transport:
+    errors.append(
+        "SankaWebTransport.kt BEKU — tidak boleh disentuh v2.0.11 "
+        "(v2.0.11 #8)"
+    )
+
+# 22i. Gerbang delta Cari Bug v2.0.11 (F-1/F-2/F-7):
+#      - F-1: cek sekali-per-proses — KillSwitch punya
+#        ensureCheckedInProcess + hasCheckedInProcess, dan MainActivity
+#        memakainya di onCreate (jalur pemulihan proses yang melewati
+#        Splash); aturan murninya di KillSwitchLogic.needsRecheck.
+#      - F-2: retry manual ("Coba Lagi") memaksa fetch segar —
+#        KillSwitch punya jalur fetch(0) + bedakan throttling
+#        (FirebaseRemoteConfigFetchThrottledException, BUKAN log
+#        fetch-gagal); ketiga jalur retry memanggil check(force = true).
+#      - F-7: CancellationException dilempar ulang di KillSwitch.
+if "ensureCheckedInProcess" not in _ks_wrapper or "hasCheckedInProcess" not in _ks_wrapper:
+    errors.append(
+        "KillSwitch.kt: ensureCheckedInProcess() + hasCheckedInProcess() "
+        "wajib ada — cek sekali-per-proses (delta F-1)"
+    )
+if "needsRecheck" not in _ks_logic:
+    errors.append(
+        "KillSwitchLogic.kt: needsRecheck() wajib ada — aturan paksa cek "
+        "bila proses belum pernah cek (delta F-1)"
+    )
+if "ensureCheckedInProcess" not in _ks_main:
+    errors.append(
+        "MainActivity.kt: onCreate wajib memaksa satu kali cek via "
+        "ensureCheckedInProcess() — jalur pemulihan proses melewati "
+        "Splash (delta F-1)"
+    )
+if "fetch(0" not in _ks_wrapper:
+    errors.append(
+        "KillSwitch.kt: jalur fetch(0) wajib ada — retry manual memaksa "
+        "fetch segar, mengabaikan interval 15 menit (delta F-2)"
+    )
+if "FirebaseRemoteConfigFetchThrottledException" not in _ks_wrapper:
+    errors.append(
+        "KillSwitch.kt: throttling SDK wajib dibedakan dari gagal "
+        "(FirebaseRemoteConfigFetchThrottledException — bukan log "
+        "fetch-gagal, delta F-2)"
+    )
+if "CancellationException" not in _ks_wrapper:
+    errors.append(
+        "KillSwitch.kt: CancellationException wajib dilempar ulang — "
+        "jangan ditelan jadi fail-open (delta F-7)"
+    )
+for _ks_retry_name, _ks_retry_path in (
+    ("HomeFragment", JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "home" / "HomeFragment.kt"),
+    ("BrowseFragment", JAVA / "animelovers" / "rebornhd" / "ui" / "main" / "browse" / "BrowseFragment.kt"),
+    ("DetailActivity", JAVA / "animelovers" / "rebornhd" / "ui" / "detail" / "DetailActivity.kt"),
+):
+    _ks_retry_text = _ks_retry_path.read_text(encoding="utf-8")
+    if "force = true" not in _ks_retry_text:
+        errors.append(
+            f"{_ks_retry_name}: tombol 'Coba Lagi' wajib memanggil "
+            "check(force = true) — retry manual memaksa fetch segar "
+            "(delta F-2)"
         )
 
 # ---------- Laporan ----------

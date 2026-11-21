@@ -21,9 +21,12 @@ import animelovers.rebornhd.ui.adapter.EpisodeAdapter
 import animelovers.rebornhd.ui.adapter.HistoryDetailAdapter
 import animelovers.rebornhd.ui.adapter.loadPoster
 import animelovers.rebornhd.ui.episode.EpisodeActivity
+import animelovers.rebornhd.ui.main.MainActivity
 import animelovers.rebornhd.ui.player.VideoPlayActivity
 import animelovers.rebornhd.ui.settings.SettingActivity
 import animelovers.rebornhd.util.Constants
+import animelovers.rebornhd.util.KillEvaluation
+import animelovers.rebornhd.util.KillSwitch
 import animelovers.rebornhd.util.toast
 import animelovers.rebornhd.util.toastSankaError
 import kotlinx.coroutines.CancellationException
@@ -131,7 +134,9 @@ class DetailActivity : BaseActivity() {
         // State error menetap (v2.0.5, temuan Minor Cari Bug): tombol
         // "Coba lagi" memuat ulang detail — user tidak lagi harus
         // pull-to-refresh setelah toast error hilang.
-        binding.cobaLagiButton.setOnClickListener { load() }
+        // v2.0.11: bila error state server yang tampil, tombol ini
+        // mengecek ulang saklar dulu (retryLoad).
+        binding.cobaLagiButton.setOnClickListener { retryLoad() }
         binding.swipeContainerDet.setOnRefreshListener { load() }
 
         val openSettings = {
@@ -142,7 +147,13 @@ class DetailActivity : BaseActivity() {
         binding.unlocknow.setOnClickListener { openSettings() }
         binding.unlockimg.setOnClickListener { openSettings() }
 
-        load()
+        // v2.0.11 (delta F-1): jalur pemulihan proses melewati Splash —
+        // paksa satu kali cek di proses ini sebelum memutuskan
+        // muat/tidak (tanpa peduli killLastCheckMs yang persisten).
+        lifecycleScope.launch {
+            KillSwitch.ensureCheckedInProcess(app())
+            if (KillSwitch.isDead()) showDeadState(KillSwitch.current()) else load()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -196,14 +207,60 @@ class DetailActivity : BaseActivity() {
      * (jangan tutupi konten bagus dengan layar error).
      */
     private fun showError() {
+        // v2.0.11: error biasa — judul + teks dikembalikan ke bentuk
+        // aslinya (judul disembunyikan, teks = detail_gagal) supaya
+        // tidak tertinggal teks error state server dari sebelumnya.
+        binding.errorDetailTitle.visibility = View.GONE
+        binding.errorDetailText.text = getString(R.string.detail_gagal)
         binding.errorDetailContainer.visibility = View.VISIBLE
     }
 
     private fun hideError() {
+        binding.errorDetailTitle.visibility = View.GONE
         binding.errorDetailContainer.visibility = View.GONE
     }
 
+    /**
+     * v2.0.11: error state server di Detail — memakai container error
+     * yang sudah ada (v2.0.5) + judul "Server Sanka Putus" dan teks
+     * kill_message. Bukan toast — layar error menetap.
+     */
+    private fun showDeadState(decision: KillEvaluation) {
+        // Delta F-5: shimmer jangan terus berjalan di balik error state.
+        hideShimmer()
+        binding.errorDetailTitle.visibility = View.VISIBLE
+        binding.errorDetailTitle.text = getString(R.string.server_sanka_putus)
+        binding.errorDetailText.text = decision.message
+        binding.errorDetailContainer.visibility = View.VISIBLE
+    }
+
+    /**
+     * v2.0.11: tombol "Coba Lagi" di Detail — bila saklar sedang MATI,
+     * cek ulang dulu; bila sudah IZINKAN, muat detail seperti biasa.
+     */
+    private fun retryLoad() {
+        if (!KillSwitch.isDead()) {
+            load()
+            return
+        }
+        lifecycleScope.launch {
+            binding.errorDetailProgress.visibility = View.VISIBLE
+            binding.cobaLagiButton.isEnabled = false
+            // Delta F-2: retry manual ("Coba Lagi") memaksa fetch segar
+            // (force = true) — bukan cache interval 15 menit.
+            val decision = KillSwitch.check(app(), force = true)
+            binding.errorDetailProgress.visibility = View.GONE
+            binding.cobaLagiButton.isEnabled = true
+            if (decision.allowed) load() else showDeadState(decision)
+        }
+    }
+
     private fun load() {
+        // v2.0.11: saat saklar MATI, jangan minta /detail.
+        if (KillSwitch.isDead()) {
+            showDeadState(KillSwitch.current())
+            return
+        }
         if (isLoading) return
         isLoading = true
         hideError()
@@ -239,6 +296,11 @@ class DetailActivity : BaseActivity() {
     }
 
     private fun applyData(data: SankaDetail) {
+        // v2.0.11: saklar MATI di tengah muat — jangan render konten.
+        if (KillSwitch.isDead()) {
+            showDeadState(KillSwitch.current())
+            return
+        }
         animeTitle = data.displayTitle
         animePoster = data.posterUrl
         genres = data.genreSlugs
@@ -316,6 +378,13 @@ class DetailActivity : BaseActivity() {
     }
 
     private fun openPlayer(episode: Int) {
+        // v2.0.11: jangan buka player bila saklar MATI — kembali ke
+        // error state Beranda (bukan toast + diam).
+        if (KillSwitch.isDead()) {
+            MainActivity.startDead(this)
+            finish()
+            return
+        }
         if (isLocked()) {
             toast(getString(R.string.ecchi_perlu_login))
             return
